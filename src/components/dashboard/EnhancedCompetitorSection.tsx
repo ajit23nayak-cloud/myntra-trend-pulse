@@ -2,10 +2,11 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CompetitiveHeatmap } from './CompetitiveHeatmap';
 import { FlashSaleTracker } from './FlashSaleTracker';
+import { PriceGapTimeline } from './PriceGapTimeline';
 import { useCompetitorProducts, useCompetitorDeals } from '@/hooks/useDashboardData';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DollarSign, Zap, TrendingDown, TrendingUp, BarChart3 } from 'lucide-react';
+import { DollarSign, Zap, TrendingDown, TrendingUp, BarChart3, LineChart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { competitorPricing, competitorDeals } from '@/data/mockData';
 
@@ -33,6 +34,7 @@ export function EnhancedCompetitorSection() {
       <Tabs defaultValue="heatmap" className="space-y-4">
         <TabsList>
           <TabsTrigger value="heatmap">Price Heatmap</TabsTrigger>
+          <TabsTrigger value="timeline">Price Timeline</TabsTrigger>
           <TabsTrigger value="flash">Flash Sales</TabsTrigger>
           <TabsTrigger value="pricing">Price Comparison</TabsTrigger>
           <TabsTrigger value="deals">Active Deals</TabsTrigger>
@@ -45,6 +47,16 @@ export function EnhancedCompetitorSection() {
               Competitive Price Heatmap
             </h3>
             <CompetitiveHeatmap />
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="timeline">
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <LineChart className="w-4 h-4 text-coral" />
+              Price Gap Timeline
+            </h3>
+            <PriceGapTimeline />
           </Card>
         </TabsContent>
 

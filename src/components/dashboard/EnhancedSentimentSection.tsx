@@ -5,8 +5,9 @@ import { useSentimentReviews, useSentimentTrends } from '@/hooks/useDashboardDat
 import { TimeframeSelector } from './TimeframeSelector';
 import { CohortFilter } from './CohortFilter';
 import { KeyPhraseCloud } from './KeyPhraseCloud';
+import { SentimentVelocityChart } from './SentimentVelocityChart';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { MessageSquare, TrendingUp, AlertTriangle, Users } from 'lucide-react';
+import { MessageSquare, TrendingUp, AlertTriangle, Users, Activity } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { TimeframeOption, CustomerCohort, RegionType } from '@/types/database';
 import { sentimentOverTime, sentimentThemes, recentFeedback } from '@/data/mockData';
@@ -56,6 +57,7 @@ export function EnhancedSentimentSection() {
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="velocity">Review Velocity</TabsTrigger>
           <TabsTrigger value="themes">By Theme</TabsTrigger>
           <TabsTrigger value="keyphrases">Key Phrases</TabsTrigger>
           <TabsTrigger value="feedback">Recent Feedback</TabsTrigger>
@@ -89,6 +91,16 @@ export function EnhancedSentimentSection() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="velocity">
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-coral" />
+              Sentiment Velocity Analysis
+            </h3>
+            <SentimentVelocityChart />
           </Card>
         </TabsContent>
 
