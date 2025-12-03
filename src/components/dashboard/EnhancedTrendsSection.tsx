@@ -4,9 +4,11 @@ import { TrendVelocityChart } from './TrendVelocityChart';
 import { InventoryMatchIndicator } from './InventoryMatchIndicator';
 import { RegionalTrendMap } from './RegionalTrendMap';
 import { TrendLifecycleForecast } from './TrendLifecycleForecast';
+import { TrendMismatchAlert } from './TrendMismatchAlert';
+import { TrendImageGallery } from './TrendImageGallery';
 import { useFashionTrends } from '@/hooks/useDashboardData';
 import { Badge } from '@/components/ui/badge';
-import { Zap, Target, TrendingUp, TrendingDown, MapPin, Package, LineChart } from 'lucide-react';
+import { Zap, Target, TrendingUp, TrendingDown, MapPin, Package, LineChart, AlertTriangle, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fashionTrends } from '@/data/mockData';
 
@@ -28,14 +30,22 @@ export function EnhancedTrendsSection() {
         <p className="text-muted-foreground">GenZ trend forecasting with velocity tracking</p>
       </div>
 
-      <Tabs defaultValue="velocity" className="space-y-4">
-        <TabsList>
+      <Tabs defaultValue="gallery" className="space-y-4">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="gallery">Style Gallery</TabsTrigger>
           <TabsTrigger value="velocity">Trend Velocity</TabsTrigger>
           <TabsTrigger value="forecast">Lifecycle Forecast</TabsTrigger>
+          <TabsTrigger value="mismatch">Mismatch Alerts</TabsTrigger>
           <TabsTrigger value="inventory">Inventory Match</TabsTrigger>
           <TabsTrigger value="regional">Regional Trends</TabsTrigger>
           <TabsTrigger value="all">All Trends</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="gallery">
+          <Card className="p-6">
+            <TrendImageGallery />
+          </Card>
+        </TabsContent>
 
         <TabsContent value="velocity">
           <Card className="p-6">
@@ -55,6 +65,10 @@ export function EnhancedTrendsSection() {
             </h3>
             <TrendLifecycleForecast />
           </Card>
+        </TabsContent>
+
+        <TabsContent value="mismatch">
+          <TrendMismatchAlert />
         </TabsContent>
 
         <TabsContent value="inventory">

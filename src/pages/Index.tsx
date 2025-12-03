@@ -9,10 +9,12 @@ import { EnhancedInsightsSection } from '@/components/dashboard/EnhancedInsights
 import { AlertsSection } from '@/components/dashboard/AlertsSection';
 import { RealTimeAlertBanner } from '@/components/dashboard/RealTimeAlertBanner';
 import { DataRefreshPanel } from '@/components/dashboard/DataRefreshPanel';
+import { TeamRoleSwitcher, RoleSpecificKPIs, TeamRole } from '@/components/dashboard/TeamRoleSwitcher';
 import { cn } from '@/lib/utils';
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState('overview');
+  const [teamRole, setTeamRole] = useState<TeamRole>('merchandiser');
 
   const renderSection = () => {
     switch (activeSection) {
@@ -47,6 +49,10 @@ const Index = () => {
         <Header />
         
         <div className="p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <TeamRoleSwitcher role={teamRole} onRoleChange={setTeamRole} />
+          </div>
+          <RoleSpecificKPIs role={teamRole} />
           <RealTimeAlertBanner />
           <DataRefreshPanel />
           {renderSection()}
