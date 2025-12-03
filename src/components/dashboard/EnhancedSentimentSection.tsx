@@ -3,13 +3,14 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSentimentReviews, useSentimentTrends } from '@/hooks/useDashboardData';
 import { TimeframeSelector } from './TimeframeSelector';
-import { CohortFilter } from './CohortFilter';
+import { GlobalFilters } from './GlobalFilters';
 import { KeyPhraseCloud } from './KeyPhraseCloud';
 import { SentimentVelocityChart } from './SentimentVelocityChart';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { MessageSquare, TrendingUp, AlertTriangle, Users, Activity } from 'lucide-react';
+import { ReviewDrillDown } from './ReviewDrillDown';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { MessageSquare, TrendingUp, AlertTriangle, Activity, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type { TimeframeOption, CustomerCohort, RegionType } from '@/types/database';
+import type { TimeframeOption, CustomerCohort, RegionType, SentimentTheme } from '@/types/database';
 import { sentimentOverTime, sentimentThemes, recentFeedback } from '@/data/mockData';
 
 const sourceIcons: Record<string, string> = {
@@ -19,10 +20,22 @@ const sourceIcons: Record<string, string> = {
   'Trustpilot': '⭐'
 };
 
+const themeMap: Record<string, SentimentTheme> = {
+  'Product Quality': 'product_quality',
+  'Pricing': 'pricing',
+  'Delivery': 'delivery',
+  'Returns': 'returns',
+  'Customer Service': 'customer_service',
+  'App Usability': 'app_usability'
+};
+
 export function EnhancedSentimentSection() {
   const [timeframe, setTimeframe] = useState<TimeframeOption>('weekly');
   const [cohort, setCohort] = useState<CustomerCohort | undefined>();
   const [region, setRegion] = useState<RegionType | undefined>();
+  const [category, setCategory] = useState<string | undefined>();
+  const [drillDownOpen, setDrillDownOpen] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState<{ theme: SentimentTheme | null; label: string }>({ theme: null, label: '' });
 
   const { data: reviews } = useSentimentReviews({ cohort, region, limit: 10 });
   const { data: trends } = useSentimentTrends(timeframe);
@@ -36,6 +49,18 @@ export function EnhancedSentimentSection() {
 
   const feedbackData = reviews?.length ? reviews : recentFeedback;
 
+  const handleThemeClick = (themeLabel: string) => {
+    const theme = themeMap[themeLabel] || null;
+    setSelectedTheme({ theme, label: themeLabel });
+    setDrillDownOpen(true);
+  };
+
+  const clearFilters = () => {
+    setCohort(undefined);
+    setRegion(undefined);
+    setCategory(undefined);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -43,16 +68,21 @@ export function EnhancedSentimentSection() {
           <h2 className="text-2xl font-bold">Sentiment Analysis</h2>
           <p className="text-muted-foreground">Customer feedback insights with cohort segmentation</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-          <CohortFilter 
-            cohort={cohort} 
-            region={region} 
-            onCohortChange={setCohort} 
-            onRegionChange={setRegion} 
-          />
-        </div>
+        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
       </div>
+
+      {/* Global Filters */}
+      <GlobalFilters
+        category={category}
+        cohort={cohort}
+        region={region}
+        onCategoryChange={setCategory}
+        onBrandChange={() => {}}
+        onCohortChange={setCohort}
+        onRegionChange={setRegion}
+        onClearAll={clearFilters}
+        showBrand={false}
+      />
 
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
@@ -106,19 +136,49 @@ export function EnhancedSentimentSection() {
 
         <TabsContent value="themes">
           <Card className="p-6">
-            <h3 className="font-semibold mb-4">Sentiment by Theme</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Sentiment by Theme</h3>
+              <Badge variant="outline" className="text-xs">
+                <ExternalLink className="w-3 h-3 mr-1" />
+                Click bar to drill down
+              </Badge>
+            </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={sentimentThemes} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                  <YAxis dataKey="theme" type="category" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} width={100} />
-                  <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                  <Bar dataKey="positive" fill="hsl(var(--teal))" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="negative" fill="hsl(var(--coral))" radius={[0, 4, 4, 0]} />
+                  <YAxis 
+                    dataKey="theme" 
+                    type="category" 
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, cursor: 'pointer' }} 
+                    width={100}
+                    onClick={(data) => handleThemeClick(data.value as string)}
+                  />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} 
+                    cursor={{ fill: 'hsl(var(--muted))', opacity: 0.3 }}
+                  />
+                  <Bar 
+                    dataKey="positive" 
+                    fill="hsl(var(--teal))" 
+                    radius={[0, 4, 4, 0]} 
+                    cursor="pointer"
+                    onClick={(data) => handleThemeClick(data.theme)}
+                  />
+                  <Bar 
+                    dataKey="negative" 
+                    fill="hsl(var(--coral))" 
+                    radius={[0, 4, 4, 0]}
+                    cursor="pointer"
+                    onClick={(data) => handleThemeClick(data.theme)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Click on any theme bar to see sample reviews
+            </p>
           </Card>
         </TabsContent>
 
@@ -158,6 +218,16 @@ export function EnhancedSentimentSection() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Drill-down Dialog */}
+      <ReviewDrillDown
+        open={drillDownOpen}
+        onOpenChange={setDrillDownOpen}
+        theme={selectedTheme.theme}
+        themeLabel={selectedTheme.label}
+        cohort={cohort}
+        region={region}
+      />
     </div>
   );
 }

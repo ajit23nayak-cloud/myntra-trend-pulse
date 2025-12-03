@@ -38,13 +38,16 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         {/* Logo */}
         <div className="p-6 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-coral to-purple flex items-center justify-center">
-              <span className="font-display font-bold text-foreground">M</span>
+            {/* Myntra Logo */}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF3F6C] to-[#FF527B] flex items-center justify-center shadow-lg">
+              <svg viewBox="0 0 24 24" className="w-6 h-6" fill="white">
+                <path d="M5 3L12 21L19 3H16L12 14L8 3H5Z" />
+              </svg>
             </div>
             {!collapsed && (
               <div className="animate-fade-in">
                 <h1 className="font-display font-bold text-lg text-foreground">Myntra</h1>
-                <p className="text-xs text-muted-foreground">AI Dashboard</p>
+                <p className="text-xs text-coral font-semibold tracking-wide">TrendPulse</p>
               </div>
             )}
           </div>

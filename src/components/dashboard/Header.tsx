@@ -39,7 +39,13 @@ export function Header({ onTimelineChange }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-      <div className="flex items-center justify-end h-16 px-6">
+      <div className="flex items-center justify-between h-16 px-6">
+        {/* Page Title */}
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold text-foreground">Myntra TrendPulse</h1>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">AI Dashboard</span>
+        </div>
+
         {/* Actions */}
         <div className="flex items-center gap-3">
           <DropdownMenu>
@@ -76,8 +82,8 @@ export function Header({ onTimelineChange }: HeaderProps) {
           <div className="w-px h-8 bg-border mx-2" />
           
           <Button variant="ghost" size="sm" className="gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-coral to-purple flex items-center justify-center">
-              <User className="w-4 h-4 text-foreground" />
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF3F6C] to-[#FF527B] flex items-center justify-center">
+              <User className="w-4 h-4 text-white" />
             </div>
             <span className="font-medium">Admin</span>
           </Button>
