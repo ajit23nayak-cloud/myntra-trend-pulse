@@ -39,12 +39,7 @@ export function Header({ onTimelineChange }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-      <div className="flex items-center justify-between h-16 px-6">
-        {/* Page Title */}
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold text-foreground">Myntra TrendPulse</h1>
-          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">AI Dashboard</span>
-        </div>
+      <div className="flex items-center justify-end h-16 px-6">
 
         {/* Actions */}
         <div className="flex items-center gap-3">
