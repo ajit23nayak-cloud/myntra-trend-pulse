@@ -38,11 +38,11 @@ export function EnhancedSentimentSection() {
   const [drillDownOpen, setDrillDownOpen] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<{ theme: SentimentTheme | null; label: string }>({ theme: null, label: '' });
 
-  // Fetch reviews with filters
+  // Fetch reviews with filters - increased limit to capture historical data
   const { data: reviews, isLoading: reviewsLoading } = useSentimentReviews({ 
     cohort, 
     region, 
-    limit: 100 
+    limit: 500 
   });
   // Filter reviews by category locally (since product_category is in the data)
   const filteredReviews = useMemo(() => {
