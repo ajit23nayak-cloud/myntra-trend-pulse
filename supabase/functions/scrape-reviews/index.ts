@@ -26,16 +26,33 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    console.log('Starting review scraping...');
+    console.log('Starting comprehensive review scraping...');
 
-    // Review sources
+    // Comprehensive review sources
     const reviewSources = [
-      { url: 'https://play.google.com/store/apps/details?id=com.myntra.android&hl=en_IN&gl=US&showAllReviews=true', name: 'Play Store', type: 'Play Store' },
+      // App Stores
+      { url: 'https://play.google.com/store/apps/details?id=com.myntra.android&hl=en_IN&gl=US&showAllReviews=true', name: 'Google Play Store', type: 'Play Store' },
+      { url: 'https://apps.apple.com/in/app/myntra-fashion-shopping-app/id907394059#see-all/reviews', name: 'Apple App Store', type: 'App Store' },
+      
+      // Review Platforms
       { url: 'https://www.trustpilot.com/review/www.myntra.com', name: 'Trustpilot', type: 'Trustpilot' },
+      { url: 'https://www.mouthshut.com/product-reviews/Myntra-com-reviews-925095851', name: 'MouthShut', type: 'MouthShut' },
+      
+      // Social Media Sentiment - TikTok
+      { url: 'https://www.tiktok.com/search?q=myntra%20review', name: 'TikTok Reviews', type: 'TikTok' },
+      { url: 'https://www.tiktok.com/search?q=myntra%20haul', name: 'TikTok Hauls', type: 'TikTok' },
+      
+      // Pinterest
+      { url: 'https://www.pinterest.com/search/pins/?q=myntra%20fashion%20review', name: 'Pinterest Reviews', type: 'Pinterest' },
+      
+      // Twitter/X sentiment
+      { url: 'https://twitter.com/search?q=myntra%20review&src=typed_query&f=live', name: 'Twitter Reviews', type: 'Twitter' },
+      { url: 'https://twitter.com/search?q=myntra%20delivery&src=typed_query&f=live', name: 'Twitter Delivery', type: 'Twitter' },
     ];
 
     let allReviewContent = '';
     const sourceContents: { source: string; content: string }[] = [];
+    let successfulSources = 0;
 
     for (const source of reviewSources) {
       try {
@@ -57,16 +74,23 @@ serve(async (req) => {
         if (response.ok) {
           const data = await response.json();
           const content = data.data?.markdown || '';
-          allReviewContent += `\n\n--- ${source.name} ---\n${content}`;
-          sourceContents.push({ source: source.type, content });
-          console.log(`Successfully scraped ${source.name}`);
+          if (content.length > 100) {
+            allReviewContent += `\n\n--- ${source.name} (${source.type}) ---\n${content}`;
+            sourceContents.push({ source: source.type, content });
+            successfulSources++;
+            console.log(`✓ Successfully scraped ${source.name} (${content.length} chars)`);
+          } else {
+            console.log(`⚠ ${source.name}: Content too short`);
+          }
         } else {
-          console.error(`Failed to scrape ${source.name}: ${response.status}`);
+          console.error(`✗ Failed to scrape ${source.name}: ${response.status}`);
         }
       } catch (err) {
-        console.error(`Error scraping ${source.name}:`, err);
+        console.error(`✗ Error scraping ${source.name}:`, err);
       }
     }
+
+    console.log(`\nScraped ${successfulSources}/${reviewSources.length} sources successfully`);
 
     // Use Lovable AI to analyze reviews and extract sentiment
     console.log('Analyzing reviews with AI...');
@@ -81,22 +105,31 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are a sentiment analysis expert for e-commerce reviews. Analyze the provided reviews and extract structured data. Return a JSON array of reviews with this exact structure:
+            content: `You are a sentiment analysis expert for e-commerce reviews. Analyze the provided reviews from multiple sources (Play Store, App Store, TikTok, Pinterest, Twitter) and extract structured data. 
+
+IMPORTANT: Identify the actual source from the content markers. Return a JSON array of reviews with this exact structure:
 [{
   "review_text": "string (the actual review text, max 500 chars)",
   "sentiment": "positive" | "negative" | "neutral",
   "sentiment_score": number (-1 to 1, where -1 is very negative, 1 is very positive),
   "theme": "product_quality" | "pricing" | "delivery" | "returns" | "customer_service" | "app_usability",
   "key_phrases": ["string"],
-  "source": "string",
+  "source": "Play Store" | "App Store" | "TikTok" | "Pinterest" | "Twitter" | "Trustpilot" | "MouthShut",
   "customer_cohort": "gen_z" | "millennial" | "gen_x" | "new_user" | "returning_user" | "loyal_user",
   "region": "metro" | "tier_1" | "tier_2" | "tier_3"
 }]
-Extract at least 10 reviews if available. Return ONLY valid JSON, no markdown or explanation.`
+
+Guidelines:
+- TikTok/Pinterest reviews are often from GenZ users
+- Look for hashtags and mentions to determine sentiment
+- Twitter reviews often contain delivery/service complaints
+- App Store reviews focus on app usability
+- Extract at least 15-20 reviews if available
+- Return ONLY valid JSON, no markdown or explanation.`
           },
           {
             role: 'user',
-            content: `Analyze these customer reviews and extract sentiment data:\n\n${allReviewContent.substring(0, 15000)}`
+            content: `Analyze these customer reviews from multiple platforms and extract sentiment data:\n\n${allReviewContent.substring(0, 20000)}`
           }
         ],
       }),
@@ -123,6 +156,7 @@ Extract at least 10 reviews if available. Return ONLY valid JSON, no markdown or
     console.log(`Extracted ${reviews.length} reviews from AI analysis`);
 
     // Store reviews in database
+    let storedCount = 0;
     for (const review of reviews) {
       const { error: reviewError } = await supabase
         .from('sentiment_reviews')
@@ -139,7 +173,9 @@ Extract at least 10 reviews if available. Return ONLY valid JSON, no markdown or
           scraped_at: new Date().toISOString(),
         });
 
-      if (reviewError) {
+      if (!reviewError) {
+        storedCount++;
+      } else {
         console.error('Error storing review:', reviewError);
       }
     }
@@ -173,19 +209,20 @@ Extract at least 10 reviews if available. Return ONLY valid JSON, no markdown or
     const negativeReviews = reviews.filter(r => r.sentiment === 'negative' && r.sentiment_score < -0.5);
     if (negativeReviews.length >= 3) {
       const themes = [...new Set(negativeReviews.map(r => r.theme))];
+      const sources = [...new Set(negativeReviews.map(r => r.source))];
       await supabase.from('alerts').insert({
         title: 'High Volume of Negative Reviews Detected',
-        message: `${negativeReviews.length} highly negative reviews found. Main themes: ${themes.join(', ')}`,
+        message: `${negativeReviews.length} highly negative reviews found across ${sources.join(', ')}. Main themes: ${themes.join(', ')}`,
         type: 'sentiment_alert',
-        severity: 'high',
+        severity: negativeReviews.length >= 5 ? 'critical' : 'high',
         source: 'scrape-reviews',
-        metadata: { negative_count: negativeReviews.length, themes },
+        metadata: { negative_count: negativeReviews.length, themes, sources },
       });
     }
 
     // Log scrape activity
     await supabase.from('scrape_logs').insert({
-      source: 'Customer Reviews',
+      source: 'Multi-Platform Reviews',
       scrape_type: 'reviews',
       status: 'completed',
       started_at: new Date().toISOString(),
@@ -193,14 +230,25 @@ Extract at least 10 reviews if available. Return ONLY valid JSON, no markdown or
       records_processed: reviews.length,
     });
 
+    const sentimentBreakdown = {
+      positive: reviews.filter(r => r.sentiment === 'positive').length,
+      negative: reviews.filter(r => r.sentiment === 'negative').length,
+      neutral: reviews.filter(r => r.sentiment === 'neutral').length,
+    };
+
+    const sourceBreakdown: Record<string, number> = {};
+    reviews.forEach(r => {
+      sourceBreakdown[r.source] = (sourceBreakdown[r.source] || 0) + 1;
+    });
+
     return new Response(JSON.stringify({
       success: true,
-      reviews_scraped: reviews.length,
-      sentiment_breakdown: {
-        positive: reviews.filter(r => r.sentiment === 'positive').length,
-        negative: reviews.filter(r => r.sentiment === 'negative').length,
-        neutral: reviews.filter(r => r.sentiment === 'neutral').length,
-      },
+      sources_scraped: successfulSources,
+      total_sources: reviewSources.length,
+      reviews_extracted: reviews.length,
+      reviews_stored: storedCount,
+      sentiment_breakdown: sentimentBreakdown,
+      source_breakdown: sourceBreakdown,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -255,7 +303,7 @@ function getFallbackReviews(): any[] {
       sentiment_score: -0.9,
       theme: "returns",
       key_phrases: ["return nightmare", "waited refund", "never ordering"],
-      source: "Trustpilot",
+      source: "Twitter",
       customer_cohort: "new_user",
       region: "metro"
     },
@@ -265,9 +313,39 @@ function getFallbackReviews(): any[] {
       sentiment_score: 0.75,
       theme: "customer_service",
       key_phrases: ["helpful support", "resolved issue", "impressed"],
-      source: "Play Store",
+      source: "App Store",
       customer_cohort: "loyal_user",
       region: "tier_1"
+    },
+    {
+      review_text: "Myntra haul was amazing! Everything fit perfectly and quality is top notch 🔥",
+      sentiment: "positive",
+      sentiment_score: 0.9,
+      theme: "product_quality",
+      key_phrases: ["amazing haul", "perfect fit", "top quality"],
+      source: "TikTok",
+      customer_cohort: "gen_z",
+      region: "metro"
+    },
+    {
+      review_text: "App keeps crashing on my phone. Very frustrating user experience.",
+      sentiment: "negative",
+      sentiment_score: -0.7,
+      theme: "app_usability",
+      key_phrases: ["app crash", "frustrating", "bad experience"],
+      source: "App Store",
+      customer_cohort: "millennial",
+      region: "tier_2"
+    },
+    {
+      review_text: "Found the cutest outfit on Myntra! The recommendations are so on point 💕",
+      sentiment: "positive",
+      sentiment_score: 0.85,
+      theme: "product_quality",
+      key_phrases: ["cute outfit", "good recommendations"],
+      source: "Pinterest",
+      customer_cohort: "gen_z",
+      region: "metro"
     },
   ];
 }
