@@ -32,6 +32,13 @@ const statDescriptions = {
   alerts: "Total alerts triggered today including price changes, competitor deals, and sentiment shifts."
 };
 
+const changeLabelTooltips = {
+  vsLastWeek: "Percentage change in sentiment score compared to the previous 7-day period.",
+  trendingUp: "Number of trends showing positive growth momentum this period.",
+  avgPriceGap: "Average percentage difference between Myntra and AJIO prices on comparable products.",
+  criticalAlerts: "High-priority alerts requiring immediate attention."
+};
+
 const sectionDescriptions = {
   sentimentTrend: "Tracks positive and negative customer sentiment over time. Green indicates positive sentiment, red indicates negative sentiment trends.",
   hotTrends: "Top emerging and peaking fashion trends detected from social media platforms, showing growth rate and current status."
@@ -79,6 +86,7 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
             value={`${dashboardStats.overallSentiment}%`}
             change={dashboardStats.sentimentChange}
             changeLabel="vs last week"
+            changeLabelTooltip={changeLabelTooltips.vsLastWeek}
             icon={MessageSquareText}
             iconColor="text-teal"
             delay={0}
@@ -93,6 +101,7 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
             value={dashboardStats.activeTrends}
             change={dashboardStats.trendingUp}
             changeLabel="trending up"
+            changeLabelTooltip={changeLabelTooltips.trendingUp}
             icon={TrendingUp}
             iconColor="text-coral"
             delay={100}
@@ -107,6 +116,7 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
             value={`${dashboardStats.priceCompetitiveness}%`}
             change={dashboardStats.priceGap}
             changeLabel="avg price gap"
+            changeLabelTooltip={changeLabelTooltips.avgPriceGap}
             icon={Target}
             iconColor="text-blue"
             delay={200}
@@ -121,6 +131,7 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
             value={dashboardStats.alertsToday}
             change={dashboardStats.criticalAlerts}
             changeLabel="critical alerts"
+            changeLabelTooltip={changeLabelTooltips.criticalAlerts}
             icon={Bell}
             iconColor="text-yellow"
             delay={300}
@@ -225,15 +236,24 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
                     )}
                     <span className="font-medium text-foreground text-sm">{trend.trend}</span>
                   </div>
-                  <Badge 
-                    variant="outline" 
-                    className={cn(
-                      "text-xs",
-                      trend.status === 'Emerging' ? "trend-emerging" : "trend-peaking"
-                    )}
-                  >
-                    +{trend.growth}%
-                  </Badge>
+                  <TooltipProvider>
+                    <TooltipUI>
+                      <TooltipTrigger asChild>
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "text-xs cursor-help",
+                            trend.status === 'Emerging' ? "trend-emerging" : "trend-peaking"
+                          )}
+                        >
+                          +{trend.growth}%
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[200px]">
+                        <p className="text-xs">Growth rate: Weekly increase in social media mentions and search volume for this trend.</p>
+                      </TooltipContent>
+                    </TooltipUI>
+                  </TooltipProvider>
                 </div>
               </div>
             ))}

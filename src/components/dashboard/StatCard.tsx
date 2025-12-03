@@ -1,12 +1,19 @@
 import { cn } from '@/lib/utils';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface StatCardProps {
   title: string;
   value: string | number;
   change?: number;
   changeLabel?: string;
+  changeLabelTooltip?: string;
   icon: LucideIcon;
   iconColor?: string;
   delay?: number;
@@ -16,7 +23,8 @@ export function StatCard({
   title, 
   value, 
   change, 
-  changeLabel, 
+  changeLabel,
+  changeLabelTooltip,
   icon: Icon,
   iconColor = 'text-primary',
   delay = 0 
@@ -59,7 +67,21 @@ export function StatCard({
           </h3>
           <p className="text-sm text-muted-foreground">{title}</p>
           {changeLabel && (
-            <p className="text-xs text-muted-foreground/70">{changeLabel}</p>
+            <div className="flex items-center gap-1">
+              <p className="text-xs text-muted-foreground/70">{changeLabel}</p>
+              {changeLabelTooltip && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-3 h-3 text-muted-foreground/50 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[200px]">
+                      <p className="text-xs">{changeLabelTooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
           )}
         </div>
       </div>
