@@ -48,7 +48,7 @@ const Index = () => {
         
         <div className="p-6 space-y-6">
           {activeSection === 'alerts' && <RealTimeAlertBanner />}
-          <DataRefreshPanel />
+          {activeSection === 'overview' && <DataRefreshPanel />}
           {renderSection()}
         </div>
       </main>

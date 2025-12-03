@@ -1,6 +1,6 @@
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendVelocityChart } from './TrendVelocityChart';
+
 import { InventoryMatchIndicator } from './InventoryMatchIndicator';
 import { RegionalTrendMap } from './RegionalTrendMap';
 import { TrendLifecycleForecast } from './TrendLifecycleForecast';
@@ -30,15 +30,14 @@ export function EnhancedTrendsSection() {
         <p className="text-muted-foreground">GenZ trend forecasting with velocity tracking</p>
       </div>
 
-      <Tabs defaultValue="gallery" className="space-y-4">
+      <Tabs defaultValue="all" className="space-y-4">
         <TabsList className="flex-wrap">
+          <TabsTrigger value="all">All Trends</TabsTrigger>
           <TabsTrigger value="gallery">Style Gallery</TabsTrigger>
-          <TabsTrigger value="velocity">Trend Velocity</TabsTrigger>
           <TabsTrigger value="forecast">Lifecycle Forecast</TabsTrigger>
           <TabsTrigger value="mismatch">Mismatch Alerts</TabsTrigger>
           <TabsTrigger value="inventory">Inventory Match</TabsTrigger>
           <TabsTrigger value="regional">Regional Trends</TabsTrigger>
-          <TabsTrigger value="all">All Trends</TabsTrigger>
         </TabsList>
 
         <TabsContent value="gallery">
@@ -47,15 +46,6 @@ export function EnhancedTrendsSection() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="velocity">
-          <Card className="p-6">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-coral" />
-              Trend Velocity & Lifespan Prediction
-            </h3>
-            <TrendVelocityChart />
-          </Card>
-        </TabsContent>
 
         <TabsContent value="forecast">
           <Card className="p-6">
