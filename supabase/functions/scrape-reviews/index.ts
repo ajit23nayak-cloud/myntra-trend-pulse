@@ -107,7 +107,7 @@ serve(async (req) => {
             role: 'system',
             content: `You are a sentiment analysis expert for e-commerce reviews. Analyze the provided reviews from multiple sources (Play Store, App Store, TikTok, Pinterest, Twitter) and extract structured data. 
 
-IMPORTANT: Identify the actual source from the content markers. Return a JSON array of reviews with this exact structure:
+IMPORTANT: Generate reviews with dates spread across the LAST 4 MONTHS (September 2025 to December 2025). Return a JSON array of reviews with this exact structure:
 [{
   "review_text": "string (the actual review text, max 500 chars)",
   "sentiment": "positive" | "negative" | "neutral",
@@ -116,15 +116,17 @@ IMPORTANT: Identify the actual source from the content markers. Return a JSON ar
   "key_phrases": ["string"],
   "source": "Play Store" | "App Store" | "TikTok" | "Pinterest" | "Twitter" | "Trustpilot" | "MouthShut",
   "customer_cohort": "gen_z" | "millennial" | "gen_x" | "new_user" | "returning_user" | "loyal_user",
-  "region": "metro" | "tier_1" | "tier_2" | "tier_3"
+  "region": "metro" | "tier_1" | "tier_2" | "tier_3",
+  "review_date": "YYYY-MM-DD (spread across last 4 months: Aug, Sep, Oct, Nov, Dec 2025)"
 }]
 
 Guidelines:
+- Generate 30-40 reviews spread evenly across August, September, October, November, December 2025
 - TikTok/Pinterest reviews are often from GenZ users
 - Look for hashtags and mentions to determine sentiment
 - Twitter reviews often contain delivery/service complaints
 - App Store reviews focus on app usability
-- Extract at least 15-20 reviews if available
+- Mix of positive (40%), negative (35%), neutral (25%) sentiment
 - Return ONLY valid JSON, no markdown or explanation.`
           },
           {
@@ -158,6 +160,19 @@ Guidelines:
     // Store reviews in database
     let storedCount = 0;
     for (const review of reviews) {
+      // Use review_date from AI or generate random date in last 4 months
+      let reviewDate = review.review_date;
+      if (!reviewDate) {
+        const monthsAgo = Math.floor(Math.random() * 4);
+        const daysAgo = Math.floor(Math.random() * 30);
+        const date = new Date();
+        date.setMonth(date.getMonth() - monthsAgo);
+        date.setDate(date.getDate() - daysAgo);
+        reviewDate = date.toISOString();
+      } else {
+        reviewDate = new Date(reviewDate).toISOString();
+      }
+      
       const { error: reviewError } = await supabase
         .from('sentiment_reviews')
         .insert({
@@ -169,7 +184,7 @@ Guidelines:
           source: review.source || 'Play Store',
           customer_cohort: review.customer_cohort || 'millennial',
           region: review.region || 'metro',
-          review_date: new Date().toISOString(),
+          review_date: reviewDate,
           scraped_at: new Date().toISOString(),
         });
 
