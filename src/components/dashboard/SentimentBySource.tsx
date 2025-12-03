@@ -38,6 +38,26 @@ interface SentimentBySourceProps {
   region?: string;
 }
 
+// Normalize source names for consistency
+function normalizeSourceName(source: string): string {
+  const normalized = source.toLowerCase().trim();
+  
+  if (normalized.includes('play store') || normalized === 'playstore') return 'Play Store';
+  if (normalized.includes('app store') || normalized === 'app_store' || normalized === 'appstore') return 'App Store';
+  if (normalized.includes('twitter') || normalized === 'x') return 'Twitter';
+  if (normalized.includes('instagram')) return 'Instagram';
+  if (normalized.includes('trustpilot')) return 'Trustpilot';
+  if (normalized.includes('facebook')) return 'Facebook';
+  if (normalized.includes('youtube')) return 'YouTube';
+  if (normalized.includes('email')) return 'Email';
+  if (normalized.includes('chat')) return 'Live Chat';
+  if (normalized.includes('website') || normalized.includes('e-commerce')) return 'Website';
+  if (normalized.includes('social')) return 'Social Media';
+  
+  // Capitalize first letter
+  return source.charAt(0).toUpperCase() + source.slice(1).toLowerCase();
+}
+
 export function SentimentBySource({ cohort, region }: SentimentBySourceProps) {
   const { data: reviews, isLoading } = useSentimentReviews({ 
     cohort: cohort as any, 
@@ -49,9 +69,9 @@ export function SentimentBySource({ cohort, region }: SentimentBySourceProps) {
     return <div className="animate-pulse h-64 bg-muted rounded-lg" />;
   }
 
-  // Aggregate by source
+  // Aggregate by normalized source
   const sourceStats = reviews?.reduce((acc: any, review) => {
-    const source = review.source || 'Unknown';
+    const source = normalizeSourceName(review.source || 'Unknown');
     if (!acc[source]) {
       acc[source] = { 
         source, 
