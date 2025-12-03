@@ -55,24 +55,26 @@ export function EnhancedSentimentSection() {
   const chartData = useMemo(() => {
     if (!reviews || reviews.length === 0) return sentimentOverTime;
     
-    // Group reviews by week
-    const reviewsByWeek = reviews.reduce((acc: Record<string, { positive: number; negative: number; neutral: number }>, review) => {
+    // Group reviews by week with timestamp for proper sorting
+    const reviewsByWeek = reviews.reduce((acc: Record<string, { positive: number; negative: number; neutral: number; timestamp: number }>, review) => {
       const date = new Date(review.review_date);
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      const timestamp = weekStart.getTime();
       const weekKey = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       
       if (!acc[weekKey]) {
-        acc[weekKey] = { positive: 0, negative: 0, neutral: 0 };
+        acc[weekKey] = { positive: 0, negative: 0, neutral: 0, timestamp };
       }
       acc[weekKey][review.sentiment]++;
       return acc;
     }, {});
 
-    // Convert to array and sort by date
+    // Convert to array and sort chronologically by timestamp
     const sortedWeeks = Object.entries(reviewsByWeek)
-      .map(([week, counts]) => ({ week, ...counts }))
-      .sort((a, b) => new Date(a.week).getTime() - new Date(b.week).getTime());
+      .sort(([, a], [, b]) => a.timestamp - b.timestamp)
+      .map(([week, { positive, negative, neutral }]) => ({ week, positive, negative, neutral }));
 
     return sortedWeeks.length > 0 ? sortedWeeks : sentimentOverTime;
   }, [reviews]);
