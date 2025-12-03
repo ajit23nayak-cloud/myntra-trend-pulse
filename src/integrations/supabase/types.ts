@@ -244,6 +244,7 @@ export type Database = {
           growth_rate: number | null
           hashtags: string[] | null
           id: string
+          image_url: string | null
           keywords: string[] | null
           last_updated: string
           myntra_inventory_match: number | null
@@ -262,6 +263,7 @@ export type Database = {
           growth_rate?: number | null
           hashtags?: string[] | null
           id?: string
+          image_url?: string | null
           keywords?: string[] | null
           last_updated?: string
           myntra_inventory_match?: number | null
@@ -280,6 +282,7 @@ export type Database = {
           growth_rate?: number | null
           hashtags?: string[] | null
           id?: string
+          image_url?: string | null
           keywords?: string[] | null
           last_updated?: string
           myntra_inventory_match?: number | null

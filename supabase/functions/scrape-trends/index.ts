@@ -28,15 +28,23 @@ serve(async (req) => {
 
     console.log('Starting fashion trends scraping...');
 
-    // Scrape Google Trends for fashion keywords
+    // Scrape fashion trend sources with images
     const trendSources = [
       { url: 'https://trends.google.com/trending?geo=IN&category=185', name: 'Google Trends Fashion' },
       { url: 'https://www.vogue.in/fashion/trends', name: 'Vogue India Trends' },
       { url: 'https://www.elle.in/fashion/trends', name: 'Elle India Trends' },
     ];
 
-    let allTrendContent = '';
+    // Image sources for fashion trends
+    const imageSources = [
+      { url: 'https://www.pinterest.com/search/pins/?q=indian%20fashion%20trends%202025', name: 'Pinterest Fashion' },
+      { url: 'https://www.instagram.com/explore/tags/indianfashion/', name: 'Instagram Fashion' },
+    ];
 
+    let allTrendContent = '';
+    let scrapedImages: { url: string; alt: string; source: string }[] = [];
+
+    // Scrape trend content
     for (const source of trendSources) {
       try {
         console.log(`Scraping ${source.name}...`);
@@ -48,7 +56,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             url: source.url,
-            formats: ['markdown'],
+            formats: ['markdown', 'links'],
             onlyMainContent: true,
             waitFor: 3000,
           }),
@@ -57,7 +65,20 @@ serve(async (req) => {
         if (response.ok) {
           const data = await response.json();
           allTrendContent += `\n\n--- ${source.name} ---\n${data.data?.markdown || ''}`;
-          console.log(`Successfully scraped ${source.name}`);
+          
+          // Extract image links from the scraped content
+          const links = data.data?.links || [];
+          const imageLinks = links.filter((link: string) => 
+            link.match(/\.(jpg|jpeg|png|webp|gif)/i) && 
+            !link.includes('logo') && 
+            !link.includes('icon')
+          );
+          
+          for (const imgUrl of imageLinks.slice(0, 5)) {
+            scrapedImages.push({ url: imgUrl, alt: source.name, source: source.name });
+          }
+          
+          console.log(`Successfully scraped ${source.name}, found ${imageLinks.length} images`);
         } else {
           console.error(`Failed to scrape ${source.name}: ${response.status}`);
         }
@@ -65,6 +86,50 @@ serve(async (req) => {
         console.error(`Error scraping ${source.name}:`, err);
       }
     }
+
+    // Scrape images from fashion image sources
+    for (const source of imageSources) {
+      try {
+        console.log(`Scraping images from ${source.name}...`);
+        const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: source.url,
+            formats: ['markdown', 'links'],
+            onlyMainContent: true,
+            waitFor: 5000,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const links = data.data?.links || [];
+          
+          // Extract image URLs
+          const imageLinks = links.filter((link: string) => 
+            link.match(/\.(jpg|jpeg|png|webp)/i) &&
+            !link.includes('logo') &&
+            !link.includes('icon') &&
+            !link.includes('avatar') &&
+            link.includes('http')
+          );
+          
+          for (const imgUrl of imageLinks.slice(0, 10)) {
+            scrapedImages.push({ url: imgUrl, alt: 'Fashion Trend', source: source.name });
+          }
+          
+          console.log(`Found ${imageLinks.length} images from ${source.name}`);
+        }
+      } catch (err) {
+        console.error(`Error scraping images from ${source.name}:`, err);
+      }
+    }
+
+    console.log(`Total images scraped: ${scrapedImages.length}`);
 
     // Use Lovable AI to analyze trends
     console.log('Analyzing trends with AI...');
@@ -90,7 +155,8 @@ serve(async (req) => {
   "predicted_lifespan_weeks": number (4-52),
   "keywords": ["string"],
   "hashtags": ["string"],
-  "regional_popularity": {"metro": number, "tier_1": number, "tier_2": number, "tier_3": number}
+  "regional_popularity": {"metro": number, "tier_1": number, "tier_2": number, "tier_3": number},
+  "image_search_term": "string (a specific search term to find images for this trend)"
 }]
 Return ONLY valid JSON, no markdown or explanation.`
           },
@@ -113,20 +179,52 @@ Return ONLY valid JSON, no markdown or explanation.`
     
     let trends: any[] = [];
     try {
-      // Clean the response - remove markdown code blocks if present
       const cleanedContent = aiContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       trends = JSON.parse(cleanedContent);
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);
       console.log('Raw AI response:', aiContent);
-      // Use fallback trends based on common patterns
       trends = getFallbackTrends();
     }
 
     console.log(`Extracted ${trends.length} trends from AI analysis`);
 
-    // Store trends in database
+    // Fetch images for each trend using Unsplash API (free, no auth for demo)
+    const trendImages = new Map<string, string>();
+    
     for (const trend of trends) {
+      try {
+        const searchTerm = trend.image_search_term || trend.trend_name;
+        const unsplashUrl = `https://source.unsplash.com/800x800/?${encodeURIComponent(searchTerm + ' fashion')}`;
+        
+        // Use a fashion-specific image search
+        const imageKeywords = [
+          trend.trend_name.toLowerCase(),
+          ...(trend.keywords || []).slice(0, 2)
+        ].join(' ');
+        
+        // Try to get a relevant image from scraped images first
+        const matchingImage = scrapedImages.find(img => 
+          img.alt.toLowerCase().includes(trend.trend_name.toLowerCase().split(' ')[0])
+        );
+        
+        if (matchingImage) {
+          trendImages.set(trend.trend_name, matchingImage.url);
+        } else {
+          // Fallback to Unsplash source URL which redirects to actual image
+          trendImages.set(trend.trend_name, unsplashUrl);
+        }
+        
+        console.log(`Image for ${trend.trend_name}: ${trendImages.get(trend.trend_name)}`);
+      } catch (err) {
+        console.error(`Error fetching image for ${trend.trend_name}:`, err);
+      }
+    }
+
+    // Store trends in database with images
+    for (const trend of trends) {
+      const imageUrl = trendImages.get(trend.trend_name) || getDefaultTrendImage(trend.trend_name);
+      
       const { error: trendError } = await supabase
         .from('fashion_trends')
         .upsert({
@@ -140,7 +238,8 @@ Return ONLY valid JSON, no markdown or explanation.`
           keywords: trend.keywords || [],
           hashtags: trend.hashtags || [],
           regional_popularity: trend.regional_popularity || { metro: 70, tier_1: 50, tier_2: 30, tier_3: 20 },
-          myntra_inventory_match: Math.floor(Math.random() * 60) + 20, // 20-80%
+          myntra_inventory_match: Math.floor(Math.random() * 60) + 20,
+          image_url: imageUrl,
           first_detected: new Date().toISOString().split('T')[0],
           last_updated: new Date().toISOString(),
         }, { onConflict: 'trend_name' });
@@ -178,7 +277,13 @@ Return ONLY valid JSON, no markdown or explanation.`
     return new Response(JSON.stringify({
       success: true,
       trends_scraped: trends.length,
-      trends: trends.map(t => ({ name: t.trend_name, status: t.status, growth: t.growth_rate })),
+      images_scraped: scrapedImages.length,
+      trends: trends.map(t => ({ 
+        name: t.trend_name, 
+        status: t.status, 
+        growth: t.growth_rate,
+        image: trendImages.get(t.trend_name)
+      })),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -195,6 +300,37 @@ Return ONLY valid JSON, no markdown or explanation.`
   }
 });
 
+function getDefaultTrendImage(trendName: string): string {
+  const trendImageMap: Record<string, string> = {
+    'y2k': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=800&fit=crop',
+    'oversized': 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800&h=800&fit=crop',
+    'cargo': 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=800&h=800&fit=crop',
+    'coquette': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=800&h=800&fit=crop',
+    'quiet luxury': 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&h=800&fit=crop',
+    'mob wife': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&h=800&fit=crop',
+    'ballet': 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&h=800&fit=crop',
+    'mesh': 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&h=800&fit=crop',
+    'streetwear': 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=800&h=800&fit=crop',
+    'minimalist': 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=800&h=800&fit=crop',
+    'winter': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800&h=800&fit=crop',
+    'sheer': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&h=800&fit=crop',
+    'leopard': 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=800&h=800&fit=crop',
+    'lingerie': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=800&h=800&fit=crop',
+    'silver': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&h=800&fit=crop',
+    'jacket': 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&h=800&fit=crop',
+    'pinterest': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800&h=800&fit=crop',
+  };
+
+  const lowerName = trendName.toLowerCase();
+  for (const [key, url] of Object.entries(trendImageMap)) {
+    if (lowerName.includes(key)) {
+      return url;
+    }
+  }
+  
+  return 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=800&h=800&fit=crop';
+}
+
 function getFallbackTrends(): any[] {
   return [
     {
@@ -208,6 +344,7 @@ function getFallbackTrends(): any[] {
       keywords: ['quiet luxury', 'old money', 'minimalist fashion'],
       hashtags: ['#quietluxury', '#oldmoney', '#minimalistfashion'],
       regional_popularity: { metro: 90, tier_1: 70, tier_2: 40, tier_3: 20 },
+      image_search_term: 'minimalist luxury fashion',
     },
     {
       trend_name: 'Y2K Revival',
@@ -220,6 +357,7 @@ function getFallbackTrends(): any[] {
       keywords: ['y2k fashion', '2000s style', 'retro'],
       hashtags: ['#y2k', '#y2kfashion', '#2000sfashion'],
       regional_popularity: { metro: 85, tier_1: 75, tier_2: 55, tier_3: 35 },
+      image_search_term: 'y2k 2000s fashion style',
     },
     {
       trend_name: 'Coquette Aesthetic',
@@ -232,6 +370,7 @@ function getFallbackTrends(): any[] {
       keywords: ['coquette', 'bow trend', 'feminine fashion'],
       hashtags: ['#coquette', '#bowtrend', '#feminineaesthetic'],
       regional_popularity: { metro: 80, tier_1: 65, tier_2: 45, tier_3: 25 },
+      image_search_term: 'coquette feminine bow fashion',
     },
     {
       trend_name: 'Oversized Blazers',
@@ -244,6 +383,7 @@ function getFallbackTrends(): any[] {
       keywords: ['oversized blazer', 'power dressing', 'workwear'],
       hashtags: ['#oversizedblazer', '#powerdressing', '#workwear'],
       regional_popularity: { metro: 75, tier_1: 60, tier_2: 40, tier_3: 25 },
+      image_search_term: 'oversized blazer woman fashion',
     },
     {
       trend_name: 'Mob Wife Aesthetic',
@@ -256,6 +396,7 @@ function getFallbackTrends(): any[] {
       keywords: ['mob wife', 'glamour', 'italian fashion'],
       hashtags: ['#mobwife', '#mobwifeaesthetic', '#glamour'],
       regional_popularity: { metro: 70, tier_1: 45, tier_2: 25, tier_3: 15 },
+      image_search_term: 'glamorous fur coat gold fashion',
     },
   ];
 }

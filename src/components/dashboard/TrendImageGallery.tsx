@@ -1,7 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { TrendingUp, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { useFashionTrends } from '@/hooks/useDashboardData';
 import { cn } from '@/lib/utils';
 
@@ -12,27 +12,38 @@ const statusColors = {
   cooling: 'bg-muted text-muted-foreground'
 };
 
-// Placeholder images for trends (would be replaced by actual scraped images)
-const trendPlaceholders: Record<string, string> = {
-  'Y2K': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop',
-  'Oversized': 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=400&h=400&fit=crop',
-  'Cargo': 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=400&h=400&fit=crop',
-  'Coquette': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=400&fit=crop',
-  'Quiet Luxury': 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=400&fit=crop',
-  'Mob Wife': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=400&fit=crop',
-  'Ballet': 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400&h=400&fit=crop',
-  'Mesh': 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=400&fit=crop',
-  'Streetwear': 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?w=400&h=400&fit=crop',
-  'Minimalist': 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400&h=400&fit=crop'
+// Fallback images for trends without scraped images
+const fallbackImages: Record<string, string> = {
+  'y2k': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop',
+  'oversized': 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=400&h=400&fit=crop',
+  'cargo': 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=400&h=400&fit=crop',
+  'coquette': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=400&fit=crop',
+  'quiet luxury': 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=400&fit=crop',
+  'mob wife': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=400&fit=crop',
+  'winter': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=400&fit=crop',
+  'sheer': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=400&fit=crop',
+  'leopard': 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=400&h=400&fit=crop',
+  'lingerie': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=400&fit=crop',
+  'silver': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400&h=400&fit=crop',
+  'jacket': 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&h=400&fit=crop',
+  'pinterest': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=400&fit=crop',
 };
 
-function getTrendImage(trendName: string): string {
-  // Check if any keyword matches
-  for (const [keyword, url] of Object.entries(trendPlaceholders)) {
-    if (trendName.toLowerCase().includes(keyword.toLowerCase())) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getTrendImage(trend: any): string {
+  // Use the scraped image_url if available (new column may not be in types yet)
+  if (trend.image_url) {
+    return trend.image_url;
+  }
+  
+  // Fallback to keyword matching
+  const lowerName = trend.trend_name.toLowerCase();
+  for (const [key, url] of Object.entries(fallbackImages)) {
+    if (lowerName.includes(key)) {
       return url;
     }
   }
+  
   // Default fashion image
   return 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=400&fit=crop';
 }
@@ -74,8 +85,10 @@ export function TrendImageGallery() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {displayTrends.map((trend) => {
-          const imageUrl = getTrendImage(trend.trend_name);
+          const imageUrl = getTrendImage(trend);
           const status = trend.status || 'emerging';
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const hasRealImage = !!(trend as any).image_url;
           
           return (
             <Card 
@@ -100,6 +113,17 @@ export function TrendImageGallery() {
                 >
                   {status}
                 </Badge>
+                
+                {/* Real image indicator */}
+                {hasRealImage && (
+                  <Badge 
+                    variant="outline"
+                    className="absolute top-2 left-2 text-xs bg-background/50 backdrop-blur-sm"
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    Scraped
+                  </Badge>
+                )}
 
                 {/* Content overlay */}
                 <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
