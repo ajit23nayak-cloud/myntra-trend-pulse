@@ -116,31 +116,33 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
       }));
     }
     
-    // Group reviews by week
-    const weeklyData: Record<string, { positive: number; negative: number; neutral: number; total: number }> = {};
+    // Group reviews by week with timestamp for sorting
+    const weeklyData: Record<string, { positive: number; negative: number; neutral: number; total: number; timestamp: number }> = {};
     
     reviews.forEach(review => {
       const reviewDate = new Date(review.review_date);
       const weekStart = startOfWeek(reviewDate);
       const weekKey = format(weekStart, 'MMM d');
+      const timestamp = weekStart.getTime();
       
       if (!weeklyData[weekKey]) {
-        weeklyData[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0 };
+        weeklyData[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0, timestamp };
       }
       
       weeklyData[weekKey][review.sentiment as 'positive' | 'negative' | 'neutral']++;
       weeklyData[weekKey].total++;
     });
     
-    // Convert to array and sort by date
+    // Convert to array, sort chronologically by timestamp, then take last 8 weeks
     const sortedWeeks = Object.entries(weeklyData)
+      .sort(([, a], [, b]) => a.timestamp - b.timestamp)
       .map(([week, data]) => ({
         week,
         positive: data.total > 0 ? Math.round((data.positive / data.total) * 100) : 0,
         negative: data.total > 0 ? Math.round((data.negative / data.total) * 100) : 0,
         neutral: data.total > 0 ? Math.round((data.neutral / data.total) * 100) : 0,
       }))
-      .slice(-8); // Last 8 weeks
+      .slice(-8);
     
     return sortedWeeks.length > 0 ? sortedWeeks : [
       { week: 'Current', positive: sentimentStats.overallScore, negative: 100 - sentimentStats.overallScore - 5, neutral: 5 }
