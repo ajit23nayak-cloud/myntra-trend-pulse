@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useSentimentReviews, useSentimentTrends } from '@/hooks/useDashboardData';
+import { useSentimentReviews } from '@/hooks/useDashboardData';
 import { TimeframeSelector } from './TimeframeSelector';
 import { GlobalFilters } from './GlobalFilters';
 import { KeyPhraseCloud } from './KeyPhraseCloud';
@@ -44,8 +44,6 @@ export function EnhancedSentimentSection() {
     region, 
     limit: 100 
   });
-  const { data: trends } = useSentimentTrends(timeframe);
-
   // Filter reviews by category locally (since product_category is in the data)
   const filteredReviews = useMemo(() => {
     if (!reviews) return [];
@@ -53,12 +51,31 @@ export function EnhancedSentimentSection() {
     return reviews.filter(r => r.product_category?.toLowerCase().includes(category.toLowerCase()));
   }, [reviews, category]);
 
-  // Use real data if available, fallback to mock
-  const chartData = trends?.length ? trends.map(t => ({
-    week: t.period_start,
-    positive: t.positive_count,
-    negative: t.negative_count
-  })) : sentimentOverTime;
+  // Calculate sentiment trend data from actual reviews
+  const chartData = useMemo(() => {
+    if (!reviews || reviews.length === 0) return sentimentOverTime;
+    
+    // Group reviews by week
+    const reviewsByWeek = reviews.reduce((acc: Record<string, { positive: number; negative: number; neutral: number }>, review) => {
+      const date = new Date(review.review_date);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const weekKey = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      
+      if (!acc[weekKey]) {
+        acc[weekKey] = { positive: 0, negative: 0, neutral: 0 };
+      }
+      acc[weekKey][review.sentiment]++;
+      return acc;
+    }, {});
+
+    // Convert to array and sort by date
+    const sortedWeeks = Object.entries(reviewsByWeek)
+      .map(([week, counts]) => ({ week, ...counts }))
+      .sort((a, b) => new Date(a.week).getTime() - new Date(b.week).getTime());
+
+    return sortedWeeks.length > 0 ? sortedWeeks : sentimentOverTime;
+  }, [reviews]);
 
   const feedbackData = filteredReviews?.length ? filteredReviews.slice(0, 10) : recentFeedback;
 
