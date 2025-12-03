@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { GlobalFilters } from './GlobalFilters';
@@ -13,7 +13,7 @@ import { Zap, Target, TrendingUp, TrendingDown, MapPin, Package, LineChart, Sear
 import { cn } from '@/lib/utils';
 import { fashionTrends } from '@/data/mockData';
 import { Input } from '@/components/ui/input';
-import type { CustomerCohort, RegionType, TrendStatus } from '@/types/database';
+import type { RegionType, TrendStatus } from '@/types/database';
 
 const statusConfig = {
   emerging: { icon: Zap, color: 'bg-teal/20 text-teal border-teal/30' },
@@ -28,17 +28,40 @@ export function EnhancedTrendsSection() {
   const [category, setCategory] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<TrendStatus | undefined>();
   
-  const { data: trends } = useFashionTrends();
+  // Fetch trends - the hook doesn't support all filters, so we filter client-side
+  const { data: trends, isLoading } = useFashionTrends(statusFilter);
   const allTrends = trends?.length ? trends : fashionTrends;
 
-  // Filter trends based on search and filters
-  const displayTrends = allTrends.filter((trend: any) => {
-    const trendName = (trend.trend_name || trend.name || '').toLowerCase();
-    const matchesSearch = !searchQuery || trendName.includes(searchQuery.toLowerCase());
-    const matchesStatus = !statusFilter || trend.status === statusFilter;
-    // Region filtering would require regional_popularity data parsing
-    return matchesSearch && matchesStatus;
-  });
+  // Apply client-side filters
+  const displayTrends = useMemo(() => {
+    return allTrends.filter((trend: any) => {
+      const trendName = (trend.trend_name || trend.name || '').toLowerCase();
+      const trendDesc = (trend.description || '').toLowerCase();
+      const trendKeywords = (trend.keywords || []).join(' ').toLowerCase();
+      
+      // Search filter
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch = !searchQuery || 
+        trendName.includes(searchLower) || 
+        trendDesc.includes(searchLower) ||
+        trendKeywords.includes(searchLower);
+      
+      // Status filter (if not already filtered by hook)
+      const matchesStatus = !statusFilter || trend.status === statusFilter;
+      
+      // Region filter - check regional_popularity if available
+      let matchesRegion = true;
+      if (region && trend.regional_popularity) {
+        const regionalData = typeof trend.regional_popularity === 'string' 
+          ? JSON.parse(trend.regional_popularity) 
+          : trend.regional_popularity;
+        // Check if region has significant popularity
+        matchesRegion = regionalData[region] !== undefined && regionalData[region] > 0;
+      }
+      
+      return matchesSearch && matchesStatus && matchesRegion;
+    });
+  }, [allTrends, searchQuery, statusFilter, region]);
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -47,24 +70,34 @@ export function EnhancedTrendsSection() {
     setStatusFilter(undefined);
   };
 
+  const hasActiveFilters = searchQuery || region || category || statusFilter;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Fashion Trend Detection</h2>
-        <p className="text-muted-foreground">GenZ trend forecasting with velocity tracking</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">Fashion Trend Detection</h2>
+          <p className="text-muted-foreground">GenZ trend forecasting with velocity tracking</p>
+        </div>
+        {hasActiveFilters && (
+          <Badge variant="secondary" className="text-xs">
+            Showing {displayTrends.length} of {allTrends.length} trends
+          </Badge>
+        )}
       </div>
 
-      {/* Filters */}
+      {/* Search and Filters */}
       <div className="space-y-3">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search trends..."
+            placeholder="Search trends by name, description, keywords..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
+        
         <GlobalFilters
           category={category}
           region={region}
@@ -75,6 +108,7 @@ export function EnhancedTrendsSection() {
           onClearAll={clearFilters}
           showBrand={false}
           showCohort={false}
+          showCategory={false}
         />
         
         {/* Status filter chips */}
@@ -84,10 +118,11 @@ export function EnhancedTrendsSection() {
             className="cursor-pointer"
             onClick={() => setStatusFilter(undefined)}
           >
-            All Statuses
+            All Statuses ({allTrends.length})
           </Badge>
           {Object.entries(statusConfig).map(([status, config]) => {
             const Icon = config.icon;
+            const count = allTrends.filter((t: any) => t.status === status).length;
             return (
               <Badge
                 key={status}
@@ -99,7 +134,7 @@ export function EnhancedTrendsSection() {
                 onClick={() => setStatusFilter(status as TrendStatus)}
               >
                 <Icon className="w-3 h-3 mr-1" />
-                {status}
+                {status} ({count})
               </Badge>
             );
           })}
@@ -157,51 +192,68 @@ export function EnhancedTrendsSection() {
         </TabsContent>
 
         <TabsContent value="all">
-          <div className="space-y-2 mb-4">
-            <p className="text-sm text-muted-foreground">
-              Showing {displayTrends.length} of {allTrends.length} trends
-            </p>
-          </div>
-          <div className="grid gap-4">
-            {displayTrends.length === 0 ? (
-              <Card className="p-8 text-center">
-                <Search className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <p className="text-muted-foreground">No trends match your filters</p>
-              </Card>
-            ) : (
-              displayTrends.map((trend: any, i: number) => {
-                const status = trend.status || 'emerging';
-                const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.emerging;
-                const Icon = config.icon;
+          {isLoading ? (
+            <div className="animate-pulse space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-24 bg-muted rounded-lg" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {displayTrends.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <Search className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No trends match your filters</p>
+                  <button 
+                    onClick={clearFilters}
+                    className="mt-2 text-sm text-primary hover:underline"
+                  >
+                    Clear all filters
+                  </button>
+                </Card>
+              ) : (
+                displayTrends.map((trend: any, i: number) => {
+                  const status = trend.status || 'emerging';
+                  const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.emerging;
+                  const Icon = config.icon;
 
-                return (
-                  <Card key={i} className="p-4 hover:shadow-md transition-shadow cursor-pointer">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-semibold">{trend.trend_name || trend.name}</h4>
-                          <Badge variant="outline" className={cn("text-xs", config.color)}>
-                            <Icon className="w-3 h-3 mr-1" />
-                            {status}
-                          </Badge>
+                  return (
+                    <Card key={i} className="p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-semibold">{trend.trend_name || trend.name}</h4>
+                            <Badge variant="outline" className={cn("text-xs", config.color)}>
+                              <Icon className="w-3 h-3 mr-1" />
+                              {status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-2">{trend.description}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {(trend.platforms || []).map((p: string, j: number) => (
+                              <Badge key={j} variant="secondary" className="text-xs">{p}</Badge>
+                            ))}
+                            {trend.keywords?.slice(0, 3).map((k: string, j: number) => (
+                              <Badge key={`k-${j}`} variant="outline" className="text-xs">{k}</Badge>
+                            ))}
+                          </div>
                         </div>
-                        <p className="text-sm text-muted-foreground mb-2">{trend.description}</p>
-                        <div className="flex flex-wrap gap-1">
-                          {(trend.platforms || []).map((p: string, j: number) => (
-                            <Badge key={j} variant="secondary" className="text-xs">{p}</Badge>
-                          ))}
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-teal">+{trend.growth_rate || trend.growth}%</p>
+                          <p className="text-xs text-muted-foreground">growth rate</p>
+                          {trend.velocity_score && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Velocity: {trend.velocity_score.toFixed(0)}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-teal">+{trend.growth_rate || trend.growth}%</p>
-                        <p className="text-xs text-muted-foreground">growth rate</p>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })
-            )}
-          </div>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
