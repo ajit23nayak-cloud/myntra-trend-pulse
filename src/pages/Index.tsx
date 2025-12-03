@@ -2,29 +2,29 @@ import { useState } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { OverviewSection } from '@/components/dashboard/OverviewSection';
-import { SentimentSection } from '@/components/dashboard/SentimentSection';
-import { TrendsSection } from '@/components/dashboard/TrendsSection';
-import { CompetitorSection } from '@/components/dashboard/CompetitorSection';
-import { InsightsSection } from '@/components/dashboard/InsightsSection';
+import { EnhancedSentimentSection } from '@/components/dashboard/EnhancedSentimentSection';
+import { EnhancedTrendsSection } from '@/components/dashboard/EnhancedTrendsSection';
+import { EnhancedCompetitorSection } from '@/components/dashboard/EnhancedCompetitorSection';
+import { EnhancedInsightsSection } from '@/components/dashboard/EnhancedInsightsSection';
 import { AlertsSection } from '@/components/dashboard/AlertsSection';
+import { RealTimeAlertBanner } from '@/components/dashboard/RealTimeAlertBanner';
 import { cn } from '@/lib/utils';
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState('overview');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const renderSection = () => {
     switch (activeSection) {
       case 'overview':
         return <OverviewSection onNavigate={setActiveSection} />;
       case 'sentiment':
-        return <SentimentSection />;
+        return <EnhancedSentimentSection />;
       case 'trends':
-        return <TrendsSection />;
+        return <EnhancedTrendsSection />;
       case 'competitor':
-        return <CompetitorSection />;
+        return <EnhancedCompetitorSection />;
       case 'insights':
-        return <InsightsSection />;
+        return <EnhancedInsightsSection />;
       case 'alerts':
         return <AlertsSection />;
       default:
@@ -41,11 +41,12 @@ const Index = () => {
       
       <main className={cn(
         "transition-all duration-300",
-        "ml-64" // Default sidebar width
+        "ml-64"
       )}>
         <Header />
         
         <div className="p-6">
+          <RealTimeAlertBanner />
           {renderSection()}
         </div>
       </main>
