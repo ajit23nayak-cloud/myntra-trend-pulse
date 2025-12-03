@@ -1,1 +1,13 @@
 project_id = "ymqvtwjubhbxsmgylabc"
+
+[functions.scrape-competitor-data]
+verify_jwt = false
+
+[functions.scrape-trends]
+verify_jwt = false
+
+[functions.scrape-reviews]
+verify_jwt = false
+
+[functions.generate-insights]
+verify_jwt = false
