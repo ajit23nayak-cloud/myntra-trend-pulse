@@ -25,8 +25,8 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, route: '/' },
-  { id: 'sentiment', label: 'Sentiment Analysis', icon: MessageSquareText, route: '/' },
   { id: 'trends', label: 'Fashion Trends', icon: TrendingUp, route: '/fashion-trends' },
+  { id: 'sentiment', label: 'Sentiment Analysis', icon: MessageSquareText, route: '/' },
   { id: 'competitor', label: 'Competitor Intel', icon: Target, route: '/' },
   { id: 'insights', label: 'Insights', icon: Lightbulb, route: '/' },
   { id: 'alerts', label: 'Alerts', icon: Bell, route: '/' },
