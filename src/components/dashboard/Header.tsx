@@ -1,29 +1,76 @@
-import { Search, RefreshCw, Calendar, User } from 'lucide-react';
+import { useState } from 'react';
+import { RefreshCw, Calendar, User, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-export function Header() {
+const timelineOptions = [
+  { label: 'Last 15 days', value: '15d' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Last 3 months', value: '3m' },
+];
+
+interface HeaderProps {
+  onTimelineChange?: (timeline: string) => void;
+}
+
+export function Header({ onTimelineChange }: HeaderProps) {
+  const [selectedTimeline, setSelectedTimeline] = useState('30d');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleTimelineSelect = (value: string) => {
+    setSelectedTimeline(value);
+    handleRefresh();
+    onTimelineChange?.(value);
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    // Simulate refresh - in production this would trigger data fetch
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsRefreshing(false);
+  };
+
+  const selectedLabel = timelineOptions.find(t => t.value === selectedTimeline)?.label || 'Last 30 days';
+
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-      <div className="flex items-center justify-between h-16 px-6">
-        {/* Search */}
-        <div className="relative w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search trends, insights, alerts..." 
-            className="pl-10 bg-secondary/50 border-border focus:border-primary"
-          />
-        </div>
-
+      <div className="flex items-center justify-end h-16 px-6">
         {/* Actions */}
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
-            <Calendar className="w-4 h-4" />
-            <span>Last 30 days</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+                <Calendar className="w-4 h-4" />
+                <span>{selectedLabel}</span>
+                <ChevronDown className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {timelineOptions.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onClick={() => handleTimelineSelect(option.value)}
+                  className={selectedTimeline === option.value ? 'bg-accent' : ''}
+                >
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
-            <RefreshCw className="w-4 h-4" />
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="text-muted-foreground"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
           
           <div className="w-px h-8 bg-border mx-2" />
