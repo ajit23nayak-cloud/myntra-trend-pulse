@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSentimentReviews, useSentimentTrends } from '@/hooks/useDashboardData';
@@ -6,9 +6,10 @@ import { TimeframeSelector } from './TimeframeSelector';
 import { GlobalFilters } from './GlobalFilters';
 import { KeyPhraseCloud } from './KeyPhraseCloud';
 import { SentimentVelocityChart } from './SentimentVelocityChart';
+import { SentimentBySource } from './SentimentBySource';
 import { ReviewDrillDown } from './ReviewDrillDown';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { MessageSquare, TrendingUp, AlertTriangle, Activity, ExternalLink } from 'lucide-react';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { MessageSquare, TrendingUp, AlertTriangle, Activity, ExternalLink, BarChart3 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { TimeframeOption, CustomerCohort, RegionType, SentimentTheme } from '@/types/database';
 import { sentimentOverTime, sentimentThemes, recentFeedback } from '@/data/mockData';
@@ -37,8 +38,20 @@ export function EnhancedSentimentSection() {
   const [drillDownOpen, setDrillDownOpen] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<{ theme: SentimentTheme | null; label: string }>({ theme: null, label: '' });
 
-  const { data: reviews } = useSentimentReviews({ cohort, region, limit: 10 });
+  // Fetch reviews with filters
+  const { data: reviews, isLoading: reviewsLoading } = useSentimentReviews({ 
+    cohort, 
+    region, 
+    limit: 100 
+  });
   const { data: trends } = useSentimentTrends(timeframe);
+
+  // Filter reviews by category locally (since product_category is in the data)
+  const filteredReviews = useMemo(() => {
+    if (!reviews) return [];
+    if (!category) return reviews;
+    return reviews.filter(r => r.product_category?.toLowerCase().includes(category.toLowerCase()));
+  }, [reviews, category]);
 
   // Use real data if available, fallback to mock
   const chartData = trends?.length ? trends.map(t => ({
@@ -47,7 +60,7 @@ export function EnhancedSentimentSection() {
     negative: t.negative_count
   })) : sentimentOverTime;
 
-  const feedbackData = reviews?.length ? reviews : recentFeedback;
+  const feedbackData = filteredReviews?.length ? filteredReviews.slice(0, 10) : recentFeedback;
 
   const handleThemeClick = (themeLabel: string) => {
     const theme = themeMap[themeLabel] || null;
@@ -61,6 +74,8 @@ export function EnhancedSentimentSection() {
     setCategory(undefined);
   };
 
+  const hasActiveFilters = cohort || region || category;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -68,7 +83,14 @@ export function EnhancedSentimentSection() {
           <h2 className="text-2xl font-bold">Sentiment Analysis</h2>
           <p className="text-muted-foreground">Customer feedback insights with cohort segmentation</p>
         </div>
-        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        <div className="flex items-center gap-2">
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+          {hasActiveFilters && (
+            <Badge variant="secondary" className="text-xs">
+              {[cohort, region, category].filter(Boolean).length} filters active
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Global Filters */}
@@ -85,8 +107,9 @@ export function EnhancedSentimentSection() {
       />
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="by-source">By Source</TabsTrigger>
           <TabsTrigger value="velocity">Review Velocity</TabsTrigger>
           <TabsTrigger value="themes">By Theme</TabsTrigger>
           <TabsTrigger value="keyphrases">Key Phrases</TabsTrigger>
@@ -98,6 +121,9 @@ export function EnhancedSentimentSection() {
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-coral" />
               Sentiment Trend
+              {(cohort || region) && (
+                <Badge variant="outline" className="ml-2 text-xs">Filtered</Badge>
+              )}
             </h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -121,6 +147,16 @@ export function EnhancedSentimentSection() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="by-source">
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-coral" />
+              Sentiment Analysis by Source
+            </h3>
+            <SentimentBySource cohort={cohort} region={region} />
           </Card>
         </TabsContent>
 
@@ -197,21 +233,34 @@ export function EnhancedSentimentSection() {
 
         <TabsContent value="feedback">
           <Card className="p-6">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-coral" />
-              Recent Feedback Stream
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-coral" />
+                Recent Feedback Stream
+              </h3>
+              <Badge variant="outline" className="text-xs">
+                {filteredReviews.length} reviews
+              </Badge>
+            </div>
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {feedbackData.map((item: any, i: number) => (
                 <div key={i} className="p-3 rounded-lg bg-muted/50 border border-border">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-lg">{sourceIcons[item.source] || '📝'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{sourceIcons[item.source] || '📝'}</span>
+                      <span className="text-xs text-muted-foreground">{item.source}</span>
+                    </div>
                     <Badge variant={item.sentiment === 'positive' ? 'default' : item.sentiment === 'negative' ? 'destructive' : 'secondary'}>
                       {item.sentiment}
                     </Badge>
                   </div>
                   <p className="text-sm">{item.text || item.review_text}</p>
-                  <p className="text-xs text-muted-foreground mt-2">{item.date || item.review_date}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-muted-foreground">{item.date || new Date(item.review_date).toLocaleDateString()}</p>
+                    {item.product_category && (
+                      <Badge variant="outline" className="text-xs">{item.product_category}</Badge>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
