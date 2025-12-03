@@ -69,7 +69,7 @@ export function EnhancedTrendsSection() {
           <div className="grid gap-4">
             {displayTrends.map((trend: any, i: number) => {
               const status = trend.status || 'emerging';
-              const config = statusConfig[status as keyof typeof statusConfig];
+              const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.emerging;
               const Icon = config.icon;
 
               return (
