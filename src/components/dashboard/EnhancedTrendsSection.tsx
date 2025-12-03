@@ -3,9 +3,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendVelocityChart } from './TrendVelocityChart';
 import { InventoryMatchIndicator } from './InventoryMatchIndicator';
 import { RegionalTrendMap } from './RegionalTrendMap';
+import { TrendLifecycleForecast } from './TrendLifecycleForecast';
 import { useFashionTrends } from '@/hooks/useDashboardData';
 import { Badge } from '@/components/ui/badge';
-import { Zap, Target, TrendingUp, TrendingDown, MapPin, Package } from 'lucide-react';
+import { Zap, Target, TrendingUp, TrendingDown, MapPin, Package, LineChart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fashionTrends } from '@/data/mockData';
 
@@ -30,6 +31,7 @@ export function EnhancedTrendsSection() {
       <Tabs defaultValue="velocity" className="space-y-4">
         <TabsList>
           <TabsTrigger value="velocity">Trend Velocity</TabsTrigger>
+          <TabsTrigger value="forecast">Lifecycle Forecast</TabsTrigger>
           <TabsTrigger value="inventory">Inventory Match</TabsTrigger>
           <TabsTrigger value="regional">Regional Trends</TabsTrigger>
           <TabsTrigger value="all">All Trends</TabsTrigger>
@@ -42,6 +44,16 @@ export function EnhancedTrendsSection() {
               Trend Velocity & Lifespan Prediction
             </h3>
             <TrendVelocityChart />
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="forecast">
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <LineChart className="w-4 h-4 text-coral" />
+              Trend Lifecycle Forecast
+            </h3>
+            <TrendLifecycleForecast />
           </Card>
         </TabsContent>
 
