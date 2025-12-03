@@ -1,10 +1,11 @@
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RecommendationEngine } from './RecommendationEngine';
+import { InsightOutcomeTracker } from './InsightOutcomeTracker';
 import { useInsights, useMarkInsightActioned } from '@/hooks/useDashboardData';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Lightbulb, TrendingUp, Bell, CheckCircle } from 'lucide-react';
+import { AlertTriangle, Lightbulb, TrendingUp, Bell, CheckCircle, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { insights } from '@/data/mockData';
@@ -56,6 +57,7 @@ export function EnhancedInsightsSection() {
           <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
           <TabsTrigger value="all">All Insights</TabsTrigger>
           <TabsTrigger value="urgent">Urgent</TabsTrigger>
+          <TabsTrigger value="outcomes">Outcome Tracking</TabsTrigger>
         </TabsList>
 
         <TabsContent value="recommendations">
@@ -129,6 +131,16 @@ export function EnhancedInsightsSection() {
               );
             })}
           </div>
+        </TabsContent>
+
+        <TabsContent value="outcomes">
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-purple" />
+              Decision Outcome Tracking
+            </h3>
+            <InsightOutcomeTracker />
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
