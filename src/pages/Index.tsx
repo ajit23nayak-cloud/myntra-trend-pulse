@@ -8,6 +8,7 @@ import { EnhancedCompetitorSection } from '@/components/dashboard/EnhancedCompet
 import { EnhancedInsightsSection } from '@/components/dashboard/EnhancedInsightsSection';
 import { AlertsSection } from '@/components/dashboard/AlertsSection';
 import { RealTimeAlertBanner } from '@/components/dashboard/RealTimeAlertBanner';
+import { DataRefreshPanel } from '@/components/dashboard/DataRefreshPanel';
 import { cn } from '@/lib/utils';
 
 const Index = () => {
@@ -45,8 +46,9 @@ const Index = () => {
       )}>
         <Header />
         
-        <div className="p-6">
+        <div className="p-6 space-y-6">
           <RealTimeAlertBanner />
+          <DataRefreshPanel />
           {renderSection()}
         </div>
       </main>
