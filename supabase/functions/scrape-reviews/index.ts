@@ -281,86 +281,46 @@ Guidelines:
 });
 
 function getFallbackReviews(): any[] {
-  return [
-    {
-      review_text: "Great app with amazing collection! Found exactly what I was looking for. Delivery was fast too.",
-      sentiment: "positive",
-      sentiment_score: 0.85,
-      theme: "product_quality",
-      key_phrases: ["great app", "amazing collection", "fast delivery"],
-      source: "Play Store",
-      customer_cohort: "gen_z",
-      region: "metro"
-    },
-    {
-      review_text: "Prices are too high compared to other apps. Same products available cheaper elsewhere.",
-      sentiment: "negative",
-      sentiment_score: -0.6,
-      theme: "pricing",
-      key_phrases: ["high prices", "cheaper elsewhere"],
-      source: "Play Store",
-      customer_cohort: "millennial",
-      region: "tier_1"
-    },
-    {
-      review_text: "Love the variety but delivery took 10 days. Expected better from Myntra.",
-      sentiment: "neutral",
-      sentiment_score: 0.1,
-      theme: "delivery",
-      key_phrases: ["love variety", "delivery slow", "10 days"],
-      source: "Trustpilot",
-      customer_cohort: "returning_user",
-      region: "tier_2"
-    },
-    {
-      review_text: "Return process is a nightmare. Waited 3 weeks for refund. Never ordering again.",
-      sentiment: "negative",
-      sentiment_score: -0.9,
-      theme: "returns",
-      key_phrases: ["return nightmare", "waited refund", "never ordering"],
-      source: "Twitter",
-      customer_cohort: "new_user",
-      region: "metro"
-    },
-    {
-      review_text: "Customer support was very helpful in resolving my issue. Impressed!",
-      sentiment: "positive",
-      sentiment_score: 0.75,
-      theme: "customer_service",
-      key_phrases: ["helpful support", "resolved issue", "impressed"],
-      source: "App Store",
-      customer_cohort: "loyal_user",
-      region: "tier_1"
-    },
-    {
-      review_text: "Myntra haul was amazing! Everything fit perfectly and quality is top notch 🔥",
-      sentiment: "positive",
-      sentiment_score: 0.9,
-      theme: "product_quality",
-      key_phrases: ["amazing haul", "perfect fit", "top quality"],
-      source: "TikTok",
-      customer_cohort: "gen_z",
-      region: "metro"
-    },
-    {
-      review_text: "App keeps crashing on my phone. Very frustrating user experience.",
-      sentiment: "negative",
-      sentiment_score: -0.7,
-      theme: "app_usability",
-      key_phrases: ["app crash", "frustrating", "bad experience"],
-      source: "App Store",
-      customer_cohort: "millennial",
-      region: "tier_2"
-    },
-    {
-      review_text: "Found the cutest outfit on Myntra! The recommendations are so on point 💕",
-      sentiment: "positive",
-      sentiment_score: 0.85,
-      theme: "product_quality",
-      key_phrases: ["cute outfit", "good recommendations"],
-      source: "Pinterest",
-      customer_cohort: "gen_z",
-      region: "metro"
-    },
+  // Generate reviews spread across August to December 2025
+  const reviews = [
+    // August reviews
+    { review_text: "Great app with amazing collection! Found exactly what I was looking for.", sentiment: "positive", sentiment_score: 0.85, theme: "product_quality", key_phrases: ["great app", "amazing collection"], source: "Play Store", customer_cohort: "gen_z", region: "metro", review_date: "2025-08-05" },
+    { review_text: "Prices are too high compared to other apps. Same products available cheaper elsewhere.", sentiment: "negative", sentiment_score: -0.6, theme: "pricing", key_phrases: ["high prices", "cheaper elsewhere"], source: "Play Store", customer_cohort: "millennial", region: "tier_1", review_date: "2025-08-12" },
+    { review_text: "App keeps crashing after the latest update. Very frustrating experience.", sentiment: "negative", sentiment_score: -0.7, theme: "app_usability", key_phrases: ["app crash", "frustrating"], source: "App Store", customer_cohort: "millennial", region: "tier_2", review_date: "2025-08-18" },
+    { review_text: "Love the variety of ethnic wear options. Perfect for wedding season!", sentiment: "positive", sentiment_score: 0.8, theme: "product_quality", key_phrases: ["ethnic wear", "wedding season"], source: "Pinterest", customer_cohort: "gen_z", region: "metro", review_date: "2025-08-25" },
+    
+    // September reviews
+    { review_text: "Delivery was delayed by a week. No proper communication from the team.", sentiment: "negative", sentiment_score: -0.65, theme: "delivery", key_phrases: ["delayed delivery", "no communication"], source: "Twitter", customer_cohort: "returning_user", region: "tier_1", review_date: "2025-09-03" },
+    { review_text: "Found amazing deals during the sale! Saved so much on branded clothes.", sentiment: "positive", sentiment_score: 0.9, theme: "pricing", key_phrases: ["amazing deals", "saved money", "branded clothes"], source: "TikTok", customer_cohort: "gen_z", region: "metro", review_date: "2025-09-08" },
+    { review_text: "Return process is a nightmare. Waited 3 weeks for refund.", sentiment: "negative", sentiment_score: -0.9, theme: "returns", key_phrases: ["return nightmare", "waited refund"], source: "Trustpilot", customer_cohort: "new_user", region: "metro", review_date: "2025-09-15" },
+    { review_text: "Customer support was very helpful in resolving my issue. Impressed!", sentiment: "positive", sentiment_score: 0.75, theme: "customer_service", key_phrases: ["helpful support", "resolved issue"], source: "App Store", customer_cohort: "loyal_user", region: "tier_1", review_date: "2025-09-22" },
+    { review_text: "Quality has gone down significantly. Last two orders were disappointing.", sentiment: "negative", sentiment_score: -0.7, theme: "product_quality", key_phrases: ["quality down", "disappointing"], source: "MouthShut", customer_cohort: "loyal_user", region: "tier_2", review_date: "2025-09-28" },
+    
+    // October reviews
+    { review_text: "Myntra haul was amazing! Everything fit perfectly and quality is top notch 🔥", sentiment: "positive", sentiment_score: 0.9, theme: "product_quality", key_phrases: ["amazing haul", "perfect fit", "top quality"], source: "TikTok", customer_cohort: "gen_z", region: "metro", review_date: "2025-10-02" },
+    { review_text: "The app UI is confusing. Took forever to find my order history.", sentiment: "negative", sentiment_score: -0.5, theme: "app_usability", key_phrases: ["confusing UI", "order history"], source: "Play Store", customer_cohort: "gen_x", region: "tier_2", review_date: "2025-10-09" },
+    { review_text: "Great festive collection! Love the Diwali special range.", sentiment: "positive", sentiment_score: 0.85, theme: "product_quality", key_phrases: ["festive collection", "Diwali special"], source: "Pinterest", customer_cohort: "millennial", region: "metro", review_date: "2025-10-15" },
+    { review_text: "Received wrong size twice. Exchange process is very slow.", sentiment: "negative", sentiment_score: -0.8, theme: "returns", key_phrases: ["wrong size", "slow exchange"], source: "Twitter", customer_cohort: "returning_user", region: "tier_1", review_date: "2025-10-20" },
+    { review_text: "Delivery is super fast in metros. Got my order next day!", sentiment: "positive", sentiment_score: 0.8, theme: "delivery", key_phrases: ["super fast", "next day delivery"], source: "Play Store", customer_cohort: "loyal_user", region: "metro", review_date: "2025-10-27" },
+    
+    // November reviews
+    { review_text: "Prices increased without notice. Not competitive anymore.", sentiment: "negative", sentiment_score: -0.6, theme: "pricing", key_phrases: ["prices increased", "not competitive"], source: "Trustpilot", customer_cohort: "millennial", region: "tier_1", review_date: "2025-11-04" },
+    { review_text: "Found the cutest winter collection. Sweaters are so cozy!", sentiment: "positive", sentiment_score: 0.85, theme: "product_quality", key_phrases: ["winter collection", "cozy sweaters"], source: "Pinterest", customer_cohort: "gen_z", region: "metro", review_date: "2025-11-10" },
+    { review_text: "Customer care resolved my refund issue within a day. Great service!", sentiment: "positive", sentiment_score: 0.85, theme: "customer_service", key_phrases: ["refund resolved", "great service"], source: "Twitter", customer_cohort: "new_user", region: "metro", review_date: "2025-11-15" },
+    { review_text: "App notifications are too frequent and annoying. Had to turn them off.", sentiment: "negative", sentiment_score: -0.4, theme: "app_usability", key_phrases: ["too many notifications", "annoying"], source: "App Store", customer_cohort: "returning_user", region: "tier_2", review_date: "2025-11-20" },
+    { review_text: "Black Friday deals were amazing! Scored some great finds.", sentiment: "positive", sentiment_score: 0.9, theme: "pricing", key_phrases: ["Black Friday deals", "great finds"], source: "TikTok", customer_cohort: "gen_z", region: "metro", review_date: "2025-11-25" },
+    { review_text: "Package was damaged during delivery. Contents were fine though.", sentiment: "neutral", sentiment_score: 0.1, theme: "delivery", key_phrases: ["damaged package", "contents fine"], source: "MouthShut", customer_cohort: "loyal_user", region: "tier_3", review_date: "2025-11-28" },
+    
+    // December reviews
+    { review_text: "Year end sale prices are unbeatable! Stocking up on basics.", sentiment: "positive", sentiment_score: 0.85, theme: "pricing", key_phrases: ["year end sale", "unbeatable prices"], source: "Play Store", customer_cohort: "millennial", region: "tier_1", review_date: "2025-12-01" },
+    { review_text: "Tracking system shows wrong location. Very confusing for customers.", sentiment: "negative", sentiment_score: -0.5, theme: "delivery", key_phrases: ["wrong tracking", "confusing"], source: "Twitter", customer_cohort: "new_user", region: "tier_2", review_date: "2025-12-03" },
+    { review_text: "Love the party wear collection! Perfect for New Year celebrations.", sentiment: "positive", sentiment_score: 0.8, theme: "product_quality", key_phrases: ["party wear", "New Year"], source: "Pinterest", customer_cohort: "gen_z", region: "metro", review_date: "2025-12-05" },
+    { review_text: "Refund credited faster than expected. Impressed with the improvement.", sentiment: "positive", sentiment_score: 0.7, theme: "returns", key_phrases: ["fast refund", "impressed"], source: "Trustpilot", customer_cohort: "returning_user", region: "metro", review_date: "2025-12-08" },
+    { review_text: "Sizes are inconsistent across brands. Wish there was a better guide.", sentiment: "neutral", sentiment_score: -0.2, theme: "product_quality", key_phrases: ["inconsistent sizes", "need better guide"], source: "App Store", customer_cohort: "millennial", region: "tier_1", review_date: "2025-12-10" },
+    { review_text: "End of season sale had great discounts but popular sizes sold out fast.", sentiment: "neutral", sentiment_score: 0.3, theme: "pricing", key_phrases: ["great discounts", "sizes sold out"], source: "TikTok", customer_cohort: "gen_z", region: "metro", review_date: "2025-12-15" },
+    { review_text: "App performance has improved a lot. Browsing is much smoother now.", sentiment: "positive", sentiment_score: 0.7, theme: "app_usability", key_phrases: ["improved performance", "smoother browsing"], source: "Play Store", customer_cohort: "loyal_user", region: "tier_2", review_date: "2025-12-18" },
+    { review_text: "Delivery to tier-3 cities is still slow. Takes 7-10 days consistently.", sentiment: "negative", sentiment_score: -0.5, theme: "delivery", key_phrases: ["slow delivery", "tier-3 cities"], source: "MouthShut", customer_cohort: "new_user", region: "tier_3", review_date: "2025-12-20" },
   ];
+  
+  return reviews;
 }
