@@ -39,19 +39,19 @@ export function Header({ onTimelineChange }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-      <div className="flex items-center justify-end h-16 px-6">
+      <div className="flex items-center justify-end h-16 px-4 md:px-6 ml-12 md:ml-0">
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 md:gap-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground">
+              <Button variant="ghost" size="sm" className="gap-1 md:gap-2 text-muted-foreground px-2 md:px-3">
                 <Calendar className="w-4 h-4" />
-                <span>{selectedLabel}</span>
+                <span className="hidden sm:inline">{selectedLabel}</span>
                 <ChevronDown className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="bg-popover">
               {timelineOptions.map((option) => (
                 <DropdownMenuItem
                   key={option.value}
@@ -74,13 +74,13 @@ export function Header({ onTimelineChange }: HeaderProps) {
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
           
-          <div className="w-px h-8 bg-border mx-2" />
+          <div className="w-px h-8 bg-border mx-1 md:mx-2 hidden sm:block" />
           
-          <Button variant="ghost" size="sm" className="gap-2">
+          <Button variant="ghost" size="sm" className="gap-2 px-2 md:px-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF3F6C] to-[#FF527B] flex items-center justify-center">
               <User className="w-4 h-4 text-white" />
             </div>
-            <span className="font-medium">Admin</span>
+            <span className="font-medium hidden sm:inline">Admin</span>
           </Button>
         </div>
       </div>

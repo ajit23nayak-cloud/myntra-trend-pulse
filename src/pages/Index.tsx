@@ -42,11 +42,11 @@ const Index = () => {
       
       <main className={cn(
         "transition-all duration-300",
-        "ml-64"
+        "md:ml-64 ml-0"
       )}>
         <Header />
         
-        <div className="p-6 space-y-6">
+        <div className="p-4 md:p-6 space-y-4 md:space-y-6 pt-16 md:pt-6">
           {activeSection === 'alerts' && <RealTimeAlertBanner />}
           {activeSection === 'overview' && <DataRefreshPanel />}
           {renderSection()}
