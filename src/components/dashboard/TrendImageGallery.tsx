@@ -12,40 +12,74 @@ const statusColors = {
   cooling: 'bg-muted text-muted-foreground'
 };
 
-// Fallback images for trends without scraped images
-const fallbackImages: Record<string, string> = {
-  'y2k': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop',
-  'oversized': 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=400&h=400&fit=crop',
-  'cargo': 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=400&h=400&fit=crop',
-  'coquette': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=400&fit=crop',
-  'quiet luxury': 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=400&h=400&fit=crop',
-  'mob wife': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=400&fit=crop',
-  'winter': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=400&fit=crop',
-  'sheer': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=400&h=400&fit=crop',
-  'leopard': 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=400&h=400&fit=crop',
-  'lingerie': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=400&fit=crop',
-  'silver': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400&h=400&fit=crop',
-  'jacket': 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400&h=400&fit=crop',
-  'pinterest': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=400&fit=crop',
+// Curated fashion images mapped to trend keywords
+const trendImageMap: Record<string, string> = {
+  'winter': 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&h=800&fit=crop',
+  'cosy': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800&h=800&fit=crop',
+  'silver': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&h=800&fit=crop',
+  'jewellery': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&h=800&fit=crop',
+  'jewelry': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&h=800&fit=crop',
+  'sheer': 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=800&h=800&fit=crop',
+  'leopard': 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=800&h=800&fit=crop',
+  'print': 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=800&h=800&fit=crop',
+  'lingerie': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=800&h=800&fit=crop',
+  'outerwear': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=800&h=800&fit=crop',
+  'jacket': 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&h=800&fit=crop',
+  'transitional': 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&h=800&fit=crop',
+  'spring': 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&h=800&fit=crop',
+  'traditional': 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=800&h=800&fit=crop',
+  'ethnic': 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=800&h=800&fit=crop',
+  'mizo': 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=800&h=800&fit=crop',
+  'puan': 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=800&h=800&fit=crop',
+  'cultural': 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=800&h=800&fit=crop',
+  'pinterest': 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800&h=800&fit=crop',
+  'microtrend': 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800&h=800&fit=crop',
+  'chatgpt': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=800&fit=crop',
+  'overhyped': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=800&fit=crop',
+  'y2k': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=800&fit=crop',
+  'oversized': 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800&h=800&fit=crop',
+  'cargo': 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=800&h=800&fit=crop',
+  'coquette': 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=800&h=800&fit=crop',
+  'quiet luxury': 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&h=800&fit=crop',
+  'mob wife': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&h=800&fit=crop',
+  'fashion': 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=800&h=800&fit=crop',
+  'style': 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=800&h=800&fit=crop',
+  'modern': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&h=800&fit=crop',
+  'contemporary': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&h=800&fit=crop',
+  'revival': 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=800&h=800&fit=crop',
+  'redefining': 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&h=800&fit=crop',
 };
 
+// Default images for different trend indices (variety)
+const defaultImages = [
+  'https://images.unsplash.com/photo-1445205170230-053b83016050?w=800&h=800&fit=crop',
+  'https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800&h=800&fit=crop',
+  'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&h=800&fit=crop',
+  'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&h=800&fit=crop',
+  'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800&h=800&fit=crop',
+  'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=800&h=800&fit=crop',
+  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=800&fit=crop',
+  'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&h=800&fit=crop',
+];
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getTrendImage(trend: any): string {
-  // Use the scraped image_url if available (new column may not be in types yet)
-  if (trend.image_url) {
-    return trend.image_url;
+function getTrendImage(trend: any, index: number): string {
+  // Use the database image_url if available and valid
+  const imageUrl = trend.image_url as string | null | undefined;
+  if (imageUrl && !imageUrl.includes('source.unsplash.com')) {
+    return imageUrl;
   }
   
-  // Fallback to keyword matching
+  // Match keywords in trend name to curated images
   const lowerName = trend.trend_name.toLowerCase();
-  for (const [key, url] of Object.entries(fallbackImages)) {
-    if (lowerName.includes(key)) {
+  for (const [keyword, url] of Object.entries(trendImageMap)) {
+    if (lowerName.includes(keyword)) {
       return url;
     }
   }
   
-  // Default fashion image
-  return 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=400&fit=crop';
+  // Use variety default based on index
+  return defaultImages[index % defaultImages.length];
 }
 
 export function TrendImageGallery() {
@@ -84,11 +118,11 @@ export function TrendImageGallery() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {displayTrends.map((trend) => {
-          const imageUrl = getTrendImage(trend);
+        {displayTrends.map((trend, index) => {
+          const imageUrl = getTrendImage(trend, index);
           const status = trend.status || 'emerging';
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const hasRealImage = !!(trend as any).image_url;
+          const trendImageUrl = (trend as any).image_url as string | null | undefined;
+          const hasRealImage = !!(trendImageUrl && !trendImageUrl.includes('source.unsplash.com'));
           
           return (
             <Card 
@@ -101,7 +135,7 @@ export function TrendImageGallery() {
                   alt={trend.trend_name}
                   className="w-full h-full object-cover transition-transform group-hover:scale-105"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=400&fit=crop';
+                    (e.target as HTMLImageElement).src = defaultImages[index % defaultImages.length];
                   }}
                 />
                 {/* Gradient overlay */}
