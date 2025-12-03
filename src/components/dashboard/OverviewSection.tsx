@@ -1,4 +1,5 @@
-import { dashboardStats, sentimentOverTime, fashionTrends } from '@/data/mockData';
+import { dashboardStats, sentimentOverTime, fashionTrends as mockFashionTrends } from '@/data/mockData';
+import { useFashionTrends } from '@/hooks/useDashboardData';
 import { StatCard } from './StatCard';
 import { 
   MessageSquareText, 
@@ -60,7 +61,24 @@ function InfoTooltip({ description }: { description: string }) {
 }
 
 export function OverviewSection({ onNavigate }: OverviewSectionProps) {
-  const topTrends = fashionTrends.filter(t => t.status === 'Emerging' || t.status === 'Peaking').slice(0, 3);
+  const { data: trends } = useFashionTrends();
+  
+  // Use database trends if available, fallback to mock data
+  const allTrends = trends?.length ? trends : mockFashionTrends;
+  
+  // Filter for emerging or peaking trends (handle both cases for db lowercase and mock uppercase)
+  const topTrends = allTrends
+    .filter(t => {
+      const status = (t.status || '').toLowerCase();
+      return status === 'emerging' || status === 'peaking';
+    })
+    .slice(0, 3)
+    .map(t => ({
+      id: 'id' in t ? t.id : String(Math.random()),
+      trend: 'trend_name' in t ? t.trend_name : (t as any).trend,
+      status: t.status,
+      growth: 'growth_rate' in t ? t.growth_rate : (t as any).growth,
+    }));
   
   return (
     <div className="space-y-6">
