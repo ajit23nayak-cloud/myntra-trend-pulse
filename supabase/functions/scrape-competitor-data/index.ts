@@ -13,7 +13,6 @@ serve(async (req) => {
 
   try {
     const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -23,167 +22,185 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    console.log('Starting comprehensive AJIO competitor data scraping...');
+    console.log('Starting AJIO competitor data scraping via search API...');
 
-    // Scrape AJIO deals and offers pages
-    const dealSources = [
-      { url: 'https://www.ajio.com/s/offers', name: 'AJIO Offers' },
-      { url: 'https://www.ajio.com/s/best-offers', name: 'AJIO Best Offers' },
-      { url: 'https://www.ajio.com/s/clearance-sale', name: 'AJIO Clearance' },
+    // Use Firecrawl search API to find AJIO deals (bypasses anti-bot)
+    const searchQueries = [
+      'site:ajio.com sale offers discount 2024',
+      'site:ajio.com flash sale deals today',
+      'AJIO current promotions discounts India fashion',
+      'AJIO clearance sale offers clothing',
     ];
 
-    let allDealsContent = '';
-    let successfulDealSources = 0;
+    const deals: any[] = [];
+    const products: any[] = [];
+    let successfulSearches = 0;
 
-    for (const source of dealSources) {
+    // Search for deals using Firecrawl search API
+    for (const query of searchQueries) {
       try {
-        console.log(`Scraping ${source.name}...`);
-        const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        console.log(`Searching: ${query}`);
+        const response = await fetch('https://api.firecrawl.dev/v1/search', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            url: source.url,
-            formats: ['markdown', 'links'],
-            onlyMainContent: true,
-            waitFor: 5000,
+            query: query,
+            limit: 10,
+            country: 'in',
+            scrapeOptions: {
+              formats: ['markdown'],
+            },
           }),
         });
 
         if (response.ok) {
-          const data = await response.json();
-          const content = data.data?.markdown || '';
-          if (content.length > 100) {
-            allDealsContent += `\n\n--- ${source.name} ---\n${content}`;
-            successfulDealSources++;
-            console.log(`✓ Successfully scraped ${source.name}`);
+          const searchResult = await response.json();
+          const results = searchResult.data || searchResult || [];
+          
+          if (Array.isArray(results) && results.length > 0) {
+            successfulSearches++;
+            console.log(`✓ Found ${results.length} results for: ${query}`);
+            
+            for (const result of results) {
+              const parsedDeals = parseDealsFromSearchResult(result);
+              deals.push(...parsedDeals);
+              
+              if (result.markdown) {
+                const parsedProducts = parseProductsFromContent(result.markdown, result.url || '');
+                products.push(...parsedProducts);
+              }
+            }
+          } else {
+            console.log(`✗ No results array for: ${query}`);
           }
         } else {
-          console.error(`✗ Failed to scrape ${source.name}: ${response.status}`);
+          const errorText = await response.text();
+          console.error(`✗ Search failed for "${query}": ${response.status} - ${errorText}`);
         }
       } catch (err) {
-        console.error(`✗ Error scraping ${source.name}:`, err);
+        console.error(`✗ Search error for "${query}":`, err);
       }
     }
 
-    // Parse deals from scraped content
-    const deals = parseDealsFromMarkdown(allDealsContent);
-    console.log(`Parsed ${deals.length} deals from AJIO`);
-
-    // Scrape AJIO product categories
-    const categories = [
-      { slug: 'women-tops', name: 'Women Tops' },
-      { slug: 'men-shirts', name: 'Men Shirts' },
-      { slug: 'women-dresses', name: 'Women Dresses' },
-      { slug: 'men-jeans', name: 'Men Jeans' },
-      { slug: 'sneakers', name: 'Sneakers' },
-      { slug: 'women-kurtas-kurtis', name: 'Women Kurtas' },
-      { slug: 'men-t-shirts', name: 'Men T-Shirts' },
-      { slug: 'women-jeans', name: 'Women Jeans' },
+    // Search for specific product categories
+    const categorySearches = [
+      { query: 'AJIO women tops price discount sale', category: 'Women Tops' },
+      { query: 'AJIO men shirts price discount offer', category: 'Men Shirts' },
+      { query: 'AJIO women dresses price discount', category: 'Women Dresses' },
+      { query: 'AJIO sneakers shoes price discount', category: 'Sneakers' },
+      { query: 'AJIO ethnic wear kurta price discount', category: 'Ethnic Wear' },
     ];
 
-    const products: any[] = [];
-
-    for (const category of categories) {
+    for (const { query, category } of categorySearches) {
       try {
-        console.log(`Scraping ${category.name}...`);
-        const productResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        console.log(`Searching category: ${category}`);
+        const response = await fetch('https://api.firecrawl.dev/v1/search', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            url: `https://www.ajio.com/s/${category.slug}`,
-            formats: ['markdown'],
-            onlyMainContent: true,
-            waitFor: 5000,
+            query: query,
+            limit: 5,
+            country: 'in',
+            tbs: 'qdr:w',
+            scrapeOptions: {
+              formats: ['markdown'],
+            },
           }),
         });
 
-        if (productResponse.ok) {
-          const productData = await productResponse.json();
-          const content = productData.data?.markdown || '';
+        if (response.ok) {
+          const searchResult = await response.json();
+          const results = searchResult.data || searchResult || [];
           
-          if (content.length > 100) {
-            const categoryProducts = parseProductsFromMarkdown(content, category.name);
-            products.push(...categoryProducts);
-            console.log(`✓ Parsed ${categoryProducts.length} products from ${category.name}`);
+          if (Array.isArray(results)) {
+            for (const result of results) {
+              if (result.markdown) {
+                const categoryProducts = parseProductsFromContent(result.markdown, result.url || '', category);
+                products.push(...categoryProducts);
+              }
+            }
           }
-        } else {
-          console.error(`✗ Failed to scrape ${category.name}: ${productResponse.status}`);
         }
       } catch (err) {
-        console.error(`✗ Error scraping ${category.name}:`, err);
+        console.error(`✗ Category search error for "${category}":`, err);
       }
     }
 
-    // Store deals in database with proper unique constraint columns
+    // Deduplicate deals and products
+    const uniqueDeals = deduplicateByKey(deals, 'name');
+    const uniqueProducts = deduplicateByKey(products, 'name');
+
+    console.log(`Total unique deals: ${uniqueDeals.length}`);
+    console.log(`Total unique products: ${uniqueProducts.length}`);
+
+    // Store deals in database
     let dealsStored = 0;
-    if (deals.length > 0) {
-      for (const deal of deals) {
-        const { error: dealError } = await supabase
-          .from('competitor_deals')
-          .upsert({
-            competitor: 'AJIO',
-            deal_name: deal.name,
-            discount_value: deal.discount,
-            category: deal.category,
-            deal_type: deal.type,
-            impact_level: deal.impact,
-            is_flash_sale: deal.isFlashSale,
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: deal.endDate,
-          }, { 
-            onConflict: 'competitor,deal_name,category',
-            ignoreDuplicates: false 
-          });
+    for (const deal of uniqueDeals.slice(0, 30)) {
+      const { error: dealError } = await supabase
+        .from('competitor_deals')
+        .upsert({
+          competitor: 'AJIO',
+          deal_name: deal.name.substring(0, 255),
+          discount_value: deal.discount,
+          category: deal.category,
+          deal_type: deal.type,
+          impact_level: deal.impact,
+          is_flash_sale: deal.isFlashSale,
+          start_date: new Date().toISOString().split('T')[0],
+          end_date: deal.endDate,
+          estimated_conversion_impact: deal.conversionImpact,
+        }, { 
+          onConflict: 'competitor,deal_name,category',
+          ignoreDuplicates: false 
+        });
 
-        if (!dealError) {
-          dealsStored++;
-        } else {
-          console.error('Error storing deal:', dealError);
-        }
+      if (!dealError) {
+        dealsStored++;
+      } else {
+        console.error('Error storing deal:', dealError.message);
       }
     }
 
-    // Store products in database with proper unique constraint columns
+    // Store products in database
     let productsStored = 0;
-    if (products.length > 0) {
-      for (const product of products) {
-        const myntraPrice = estimateMyntraPrice(product.price, product.category);
-        const priceDiff = myntraPrice - product.price;
+    for (const product of uniqueProducts.slice(0, 50)) {
+      const myntraPrice = estimateMyntraPrice(product.price, product.category);
+      const priceDiff = myntraPrice - product.price;
 
-        const { error: productError } = await supabase
-          .from('competitor_products')
-          .upsert({
-            competitor: 'AJIO',
-            product_name: product.name,
-            category: product.category,
-            current_price: product.price,
-            original_price: product.originalPrice,
-            discount_percentage: product.discount,
-            brand: product.brand,
-            in_stock: true,
-            myntra_equivalent_price: myntraPrice,
-            price_difference: priceDiff,
-          }, { 
-            onConflict: 'competitor,product_name,category',
-            ignoreDuplicates: false 
-          });
+      const { error: productError } = await supabase
+        .from('competitor_products')
+        .upsert({
+          competitor: 'AJIO',
+          product_name: product.name.substring(0, 255),
+          category: product.category,
+          current_price: product.price,
+          original_price: product.originalPrice,
+          discount_percentage: product.discount,
+          brand: product.brand,
+          in_stock: true,
+          myntra_equivalent_price: myntraPrice,
+          price_difference: priceDiff,
+          product_url: product.url,
+        }, { 
+          onConflict: 'competitor,product_name,category',
+          ignoreDuplicates: false 
+        });
 
-        if (!productError) {
-          productsStored++;
-        } else {
-          console.error('Error storing product:', productError);
-        }
+      if (!productError) {
+        productsStored++;
+      } else {
+        console.error('Error storing product:', productError.message);
       }
     }
 
     // Create alerts for high-impact deals
-    const highImpactDeals = deals.filter(d => d.impact === 'high' || d.impact === 'critical');
+    const highImpactDeals = uniqueDeals.filter(d => d.impact === 'high' || d.impact === 'critical');
     if (highImpactDeals.length > 0) {
       await supabase.from('alerts').insert({
         title: `⚠️ AJIO High-Impact Deals Detected`,
@@ -192,47 +209,52 @@ serve(async (req) => {
         severity: highImpactDeals.some(d => d.impact === 'critical') ? 'critical' : 'high',
         source: 'scrape-competitor-data',
         metadata: { 
-          deals: highImpactDeals.map(d => ({ name: d.name, discount: d.discount, category: d.category })),
-          total_deals: deals.length 
+          deals: highImpactDeals.slice(0, 10).map(d => ({ name: d.name, discount: d.discount, category: d.category })),
+          total_deals: uniqueDeals.length,
+          scrape_method: 'search_api'
         },
       });
     }
 
     // Create insight for price competitiveness
-    const underpriced = products.filter(p => {
+    const underpriced = uniqueProducts.filter(p => {
       const myntraPrice = estimateMyntraPrice(p.price, p.category);
-      return myntraPrice - p.price > 200; // AJIO is cheaper by more than ₹200
+      return myntraPrice - p.price > 200;
     });
 
     if (underpriced.length > 0) {
       await supabase.from('insights').insert({
         title: `💰 Price Gap Alert: ${underpriced.length} Products Cheaper on AJIO`,
-        description: `${underpriced.length} products in categories ${[...new Set(underpriced.map(p => p.category))].join(', ')} are significantly cheaper on AJIO. Average price gap: ₹${Math.round(underpriced.reduce((sum, p) => sum + (estimateMyntraPrice(p.price, p.category) - p.price), 0) / underpriced.length)}.`,
+        description: `${underpriced.length} products in categories ${[...new Set(underpriced.map(p => p.category))].join(', ')} are significantly cheaper on AJIO.`,
         type: 'alert',
         impact_level: underpriced.length > 5 ? 'critical' : 'high',
         category: 'Competitive Pricing',
         recommendation: `Consider price matching or promotional discounts for: ${underpriced.slice(0, 3).map(p => p.category).join(', ')}`,
-        data_source: 'competitor-scraper',
-        confidence_score: 0.85,
+        data_source: 'competitor-scraper-search',
+        confidence_score: 0.82,
       });
     }
 
     // Log scrape activity
     await supabase.from('scrape_logs').insert({
-      source: 'AJIO Competitor',
+      source: 'AJIO Competitor (Search API)',
       scrape_type: 'competitor_data',
       status: 'completed',
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
-      records_processed: deals.length + products.length,
+      records_processed: dealsStored + productsStored,
+      errors: successfulSearches < searchQueries.length ? { 
+        failed_searches: searchQueries.length - successfulSearches 
+      } : null,
     });
 
     return new Response(JSON.stringify({
       success: true,
-      deal_sources_scraped: successfulDealSources,
-      deals_extracted: deals.length,
+      method: 'firecrawl_search_api',
+      successful_searches: successfulSearches,
+      deals_extracted: uniqueDeals.length,
       deals_stored: dealsStored,
-      products_extracted: products.length,
+      products_extracted: uniqueProducts.length,
       products_stored: productsStored,
       high_impact_deals: highImpactDeals.length,
       price_gaps_found: underpriced.length,
@@ -252,112 +274,183 @@ serve(async (req) => {
   }
 });
 
-function parseDealsFromMarkdown(markdown: string): any[] {
+function parseDealsFromSearchResult(result: any): any[] {
   const deals: any[] = [];
-  const lines = markdown.split('\n');
   
-  // Look for discount patterns
-  const discountPattern = /(\d+%?\s*(?:OFF|off|FLAT|flat|Up to|upto)?|\bFLAT\s*\d+%|\bUp to\s*\d+%|\d+%\s*(?:discount|off))/gi;
-  const categoryKeywords = ['women', 'men', 'kids', 'footwear', 'accessories', 'beauty', 'ethnic', 'western', 'sportswear'];
+  const title = result.title || '';
+  const description = result.description || '';
+  const url = result.url || '';
+  const content = result.markdown || '';
   
-  const seenDeals = new Set<string>();
+  const fullText = `${title} ${description} ${content}`;
   
-  for (const line of lines) {
-    const discountMatch = line.match(discountPattern);
-    if (discountMatch && line.length > 10) {
-      const discount = discountMatch[0];
-      const discountNum = parseInt(discount.match(/\d+/)?.[0] || '0');
-      
-      if (discountNum < 5 || discountNum > 95) continue; // Filter unrealistic discounts
-      
-      // Determine category from context
-      let category = 'All';
-      for (const cat of categoryKeywords) {
-        if (line.toLowerCase().includes(cat)) {
-          category = cat.charAt(0).toUpperCase() + cat.slice(1);
-          break;
-        }
+  // Extract discount percentages
+  const discountPatterns = [
+    /(\d+)%\s*(?:off|discount|sale)/gi,
+    /(?:up\s*to|upto|flat)\s*(\d+)%/gi,
+    /(?:min|minimum)\s*(\d+)%/gi,
+  ];
+  
+  const foundDiscounts: number[] = [];
+  for (const pattern of discountPatterns) {
+    let match;
+    while ((match = pattern.exec(fullText)) !== null) {
+      const discount = parseInt(match[1] || match[2]);
+      if (discount >= 10 && discount <= 90) {
+        foundDiscounts.push(discount);
       }
-      
-      const dealName = line.substring(0, 100).trim() || `AJIO ${discount} Sale`;
-      const dealKey = `${dealName}-${category}`;
-      
-      if (seenDeals.has(dealKey)) continue;
-      seenDeals.add(dealKey);
-      
-      deals.push({
-        name: dealName,
-        discount: discount,
-        category: category,
-        type: discountNum >= 50 ? 'mega_sale' : discountNum >= 30 ? 'seasonal_sale' : 'regular_discount',
-        impact: discountNum >= 60 ? 'critical' : discountNum >= 40 ? 'high' : 'medium',
-        isFlashSale: line.toLowerCase().includes('flash') || line.toLowerCase().includes('limited') || line.toLowerCase().includes('hour'),
-        endDate: null,
-      });
     }
   }
   
-  return deals.slice(0, 30);
+  if (foundDiscounts.length === 0 && !fullText.toLowerCase().includes('sale')) {
+    return deals;
+  }
+  
+  const category = detectCategory(url, fullText);
+  const maxDiscount = foundDiscounts.length > 0 ? Math.max(...foundDiscounts) : 30;
+  const isFlashSale = /flash|limited|hour|today|ending|hurry/i.test(fullText);
+  const dealType = maxDiscount >= 60 ? 'mega_sale' : maxDiscount >= 40 ? 'seasonal_sale' : 'regular_discount';
+  const impact = maxDiscount >= 60 ? 'critical' : maxDiscount >= 40 ? 'high' : 'medium';
+  
+  const dealName = title.length > 10 ? title.substring(0, 150) : `AJIO ${maxDiscount}% ${category} Sale`;
+  
+  deals.push({
+    name: dealName,
+    discount: foundDiscounts.length > 1 ? `${Math.min(...foundDiscounts)}-${maxDiscount}% Off` : `${maxDiscount}% Off`,
+    category: category,
+    type: dealType,
+    impact: impact,
+    isFlashSale: isFlashSale,
+    endDate: null,
+    conversionImpact: isFlashSale ? maxDiscount * 0.3 : maxDiscount * 0.2,
+    sourceUrl: url,
+  });
+  
+  return deals;
 }
 
-function parseProductsFromMarkdown(markdown: string, category: string): any[] {
+function parseProductsFromContent(content: string, url: string, defaultCategory?: string): any[] {
   const products: any[] = [];
-  const lines = markdown.split('\n');
+  const lines = content.split('\n');
   
-  // Look for price patterns
-  const pricePattern = /[₹Rs.]+\s*(\d+,?\d*)/g;
+  const pricePattern = /(?:₹|Rs\.?|INR)\s*([\d,]+)/gi;
   
-  const seenProducts = new Set<string>();
+  const knownBrands = [
+    'Puma', 'Nike', 'Adidas', 'Levis', 'Wrangler', 'Allen Solly', 'Van Heusen',
+    'Peter England', 'Louis Philippe', 'Jack & Jones', 'Only', 'Vero Moda',
+    'BIBA', 'W', 'Aurelia', 'Global Desi', 'AND', 'Reebok', 'Asics', 'Skechers'
+  ];
+  
+  const category = defaultCategory || detectCategory(url, content);
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (!line || line.length < 5) continue;
+    if (line.length < 5) continue;
     
     const priceMatches = [...line.matchAll(pricePattern)];
-    if (priceMatches.length > 0) {
-      const prices = priceMatches.map(m => parseInt(m[1].replace(',', ''))).filter(p => p > 100 && p < 50000);
-      
-      if (prices.length === 0) continue;
-      
-      const currentPrice = Math.min(...prices);
-      const originalPrice = prices.length > 1 ? Math.max(...prices) : Math.round(currentPrice * 1.4);
-      
-      // Try to extract brand name
-      const brandMatch = line.match(/^([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/);
-      const productName = line.substring(0, 150).trim() || `${category} Item`;
-      
-      if (seenProducts.has(productName)) continue;
-      seenProducts.add(productName);
-      
-      products.push({
-        name: productName,
-        category: category,
-        price: currentPrice,
-        originalPrice: originalPrice,
-        discount: Math.round(((originalPrice - currentPrice) / originalPrice) * 100),
-        brand: brandMatch ? brandMatch[1] : 'Unknown Brand',
-      });
+    if (priceMatches.length === 0) continue;
+    
+    const prices = priceMatches
+      .map(m => parseInt(m[1].replace(/,/g, '')))
+      .filter(p => p > 200 && p < 30000);
+    
+    if (prices.length === 0) continue;
+    
+    const sortedPrices = [...prices].sort((a, b) => a - b);
+    const currentPrice = sortedPrices[0];
+    const originalPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1] : Math.round(currentPrice * 1.35);
+    
+    let brand = 'Unknown';
+    for (const b of knownBrands) {
+      if (line.toLowerCase().includes(b.toLowerCase())) {
+        brand = b;
+        break;
+      }
+    }
+    
+    const productName = line.substring(0, 100).replace(/[₹Rs.\d,\s]+/g, ' ').trim() || `${brand} ${category}`;
+    if (productName.length < 5) continue;
+    
+    const discount = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
+    
+    products.push({
+      name: productName,
+      category: category,
+      price: currentPrice,
+      originalPrice: originalPrice,
+      discount: Math.min(discount, 85),
+      brand: brand,
+      url: url,
+    });
+  }
+  
+  return products.slice(0, 10);
+}
+
+function detectCategory(url: string, text: string): string {
+  const categoryMap: Record<string, string> = {
+    'women': 'Women',
+    'men': 'Men',
+    'kid': 'Kids',
+    'shoe': 'Footwear',
+    'sneaker': 'Sneakers',
+    'dress': 'Dresses',
+    'top': 'Tops',
+    'shirt': 'Shirts',
+    'jean': 'Jeans',
+    'kurta': 'Ethnic Wear',
+    'ethnic': 'Ethnic Wear',
+    'saree': 'Ethnic Wear',
+    'sport': 'Sportswear',
+    'winter': 'Winterwear',
+    'jacket': 'Winterwear',
+    'bag': 'Accessories',
+    'watch': 'Accessories',
+  };
+  
+  const combined = `${url} ${text}`.toLowerCase();
+  
+  for (const [keyword, category] of Object.entries(categoryMap)) {
+    if (combined.includes(keyword)) {
+      return category;
     }
   }
   
-  return products.slice(0, 15);
+  return 'Fashion';
+}
+
+function deduplicateByKey(items: any[], key: string): any[] {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    const value = String(item[key] || '').toLowerCase().substring(0, 50);
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
 }
 
 function estimateMyntraPrice(ajioPrice: number, category: string): number {
-  // Category-based price variance (Myntra is often slightly higher)
   const categoryMultipliers: Record<string, number> = {
+    'Women': 1.08,
     'Women Tops': 1.08,
-    'Women Dresses': 1.1,
-    'Women Kurtas': 1.05,
-    'Women Jeans': 1.07,
+    'Dresses': 1.10,
+    'Tops': 1.07,
+    'Ethnic Wear': 1.05,
+    'Jeans': 1.06,
+    'Men': 1.06,
     'Men Shirts': 1.06,
-    'Men T-Shirts': 1.08,
-    'Men Jeans': 1.05,
-    'Sneakers': 1.03,
+    'Shirts': 1.06,
+    'Sneakers': 1.04,
+    'Footwear': 1.05,
+    'Sportswear': 1.03,
+    'Winterwear': 1.07,
+    'Kids': 1.06,
+    'Accessories': 1.08,
+    'Fashion': 1.06,
   };
   
   const multiplier = categoryMultipliers[category] || 1.06;
-  const variance = 0.95 + Math.random() * 0.1; // 95% to 105% of base
+  const variance = 0.96 + Math.random() * 0.08;
   
   return Math.round(ajioPrice * multiplier * variance);
 }
