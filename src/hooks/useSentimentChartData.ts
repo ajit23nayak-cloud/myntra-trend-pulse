@@ -19,8 +19,8 @@ export function useSentimentChartData(reviews: Review[] | undefined): ChartDataP
       return [];
     }
     
-    // Filter reviews to only include up to Dec 5th, 2024
-    const cutoffDate = new Date('2024-12-05T23:59:59');
+    // Filter reviews to only include up to Dec 5th, 2025
+    const cutoffDate = new Date('2025-12-05T23:59:59');
     const filteredReviews = reviews.filter(review => {
       const reviewDate = new Date(review.review_date);
       return reviewDate <= cutoffDate;
