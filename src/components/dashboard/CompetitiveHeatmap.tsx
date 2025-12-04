@@ -74,9 +74,19 @@ export function CompetitiveHeatmap() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          Price gap vs AJIO in ₹ (negative = Myntra cheaper)
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <span>Price gap vs AJIO in ₹ (negative = Myntra cheaper)</span>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="cursor-help text-muted-foreground">ⓘ</span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[280px]">
+                <p className="text-sm"><strong>Price Competitiveness</strong>: Compares Myntra's prices against AJIO on matched SKUs. Green cells = Myntra offers better prices. Red cells = AJIO offers better prices. Used to identify pricing opportunities.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <Badge variant="outline" className="text-xs">
           {products?.length || 0} SKUs tracked

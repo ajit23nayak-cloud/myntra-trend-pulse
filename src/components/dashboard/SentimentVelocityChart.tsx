@@ -1,35 +1,101 @@
 import { Card } from '@/components/ui/card';
-import { useSentimentTrends, useSentimentReviews } from '@/hooks/useDashboardData';
+import { useSentimentReviews } from '@/hooks/useDashboardData';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Bar, Line } from 'recharts';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, TrendingUp, TrendingDown, MessageSquare, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { AlertTriangle, TrendingUp, TrendingDown, MessageSquare, ThumbsUp, ThumbsDown, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useMemo } from 'react';
+import { format, startOfWeek, differenceInDays, subDays } from 'date-fns';
+import {
+  Tooltip as TooltipUI,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+
+function InfoTooltip({ description }: { description: string }) {
+  return (
+    <TooltipProvider>
+      <TooltipUI>
+        <TooltipTrigger asChild>
+          <Info className="w-4 h-4 text-muted-foreground cursor-help ml-1" />
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[250px]">
+          <p className="text-sm">{description}</p>
+        </TooltipContent>
+      </TooltipUI>
+    </TooltipProvider>
+  );
+}
 
 export function SentimentVelocityChart() {
-  const { data: trends, isLoading: loadingTrends } = useSentimentTrends();
-  const { data: recentReviews, isLoading: loadingReviews } = useSentimentReviews({ limit: 50 });
+  const { data: recentReviews, isLoading: loadingReviews } = useSentimentReviews({ limit: 500 });
 
-  if (loadingTrends || loadingReviews) {
-    return <Skeleton className="h-[400px] w-full" />;
-  }
+  // Calculate velocity data from reviews grouped by week
+  const { velocityData, latestVelocity, velocityChange, velocityTrend } = useMemo(() => {
+    if (!recentReviews || recentReviews.length === 0) {
+      return { velocityData: [], latestVelocity: 0, velocityChange: 0, velocityTrend: 'stable' as const };
+    }
 
-  // Process trends for velocity chart
-  const velocityData = trends?.slice().reverse().map(t => ({
-    period: new Date(t.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    total: t.positive_count + t.negative_count + t.neutral_count,
-    positive: t.positive_count,
-    negative: t.negative_count,
-    neutral: t.neutral_count,
-    velocity: t.review_velocity || 0,
-    avgScore: t.avg_sentiment_score ? t.avg_sentiment_score * 100 : 50,
-  })) || [];
+    // Group reviews by week
+    const weeklyData: Record<string, { 
+      positive: number; 
+      negative: number; 
+      neutral: number; 
+      total: number; 
+      timestamp: number;
+      avgScore: number;
+      scoreSum: number;
+    }> = {};
 
-  // Calculate velocity changes
-  const latestVelocity = velocityData[velocityData.length - 1]?.velocity || 0;
-  const previousVelocity = velocityData[velocityData.length - 2]?.velocity || 0;
-  const velocityChange = latestVelocity - previousVelocity;
-  const velocityTrend = velocityChange > 5 ? 'spike' : velocityChange < -5 ? 'drop' : 'stable';
+    recentReviews.forEach(review => {
+      const reviewDate = new Date(review.review_date);
+      const weekStart = startOfWeek(reviewDate);
+      const weekKey = format(weekStart, 'MMM d');
+      const timestamp = weekStart.getTime();
+
+      if (!weeklyData[weekKey]) {
+        weeklyData[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0, timestamp, avgScore: 0, scoreSum: 0 };
+      }
+
+      weeklyData[weekKey][review.sentiment as 'positive' | 'negative' | 'neutral']++;
+      weeklyData[weekKey].total++;
+      weeklyData[weekKey].scoreSum += review.sentiment_score || 0;
+    });
+
+    // Convert to array sorted by timestamp
+    const sortedWeeks = Object.entries(weeklyData)
+      .sort(([, a], [, b]) => a.timestamp - b.timestamp)
+      .map(([period, data]) => ({
+        period,
+        total: data.total,
+        positive: data.positive,
+        negative: data.negative,
+        neutral: data.neutral,
+        velocity: Math.round(data.total / 7 * 10) / 10, // reviews per day
+        avgScore: data.total > 0 ? Math.round((data.scoreSum / data.total) * 100) : 50,
+      }))
+      .slice(-8);
+
+    const latestVelocity = sortedWeeks[sortedWeeks.length - 1]?.velocity || 0;
+    const previousVelocity = sortedWeeks[sortedWeeks.length - 2]?.velocity || 0;
+    const velocityChange = latestVelocity - previousVelocity;
+    const velocityTrend = velocityChange > 0.5 ? 'spike' : velocityChange < -0.5 ? 'drop' : 'stable';
+
+    return { velocityData: sortedWeeks, latestVelocity, velocityChange, velocityTrend };
+  }, [recentReviews]);
+
+  // Calculate overall review velocity (reviews per day over the entire period)
+  const overallVelocity = useMemo(() => {
+    if (!recentReviews || recentReviews.length === 0) return 0;
+    
+    const dates = recentReviews.map(r => new Date(r.review_date));
+    const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+    const daySpan = Math.max(differenceInDays(maxDate, minDate), 1);
+    
+    return Math.round((recentReviews.length / daySpan) * 10) / 10;
+  }, [recentReviews]);
 
   // Calculate sentiment distribution from recent reviews
   const sentimentCounts = recentReviews?.reduce((acc, r) => {
@@ -43,6 +109,21 @@ export function SentimentVelocityChart() {
 
   // Detect spikes in negative reviews
   const hasNegativeSpike = negativeRatio > 30;
+
+  if (loadingReviews) {
+    return <Skeleton className="h-[400px] w-full" />;
+  }
+
+  // Show message if no data
+  if (velocityData.length === 0) {
+    return (
+      <Card className="p-8 text-center">
+        <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="text-lg font-medium mb-2">No Review Data Available</h3>
+        <p className="text-muted-foreground">Run the review scraper to populate sentiment data.</p>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -64,10 +145,13 @@ export function SentimentVelocityChart() {
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1">Review Velocity</p>
+          <div className="flex items-center gap-1 mb-1">
+            <p className="text-xs text-muted-foreground">Review Velocity</p>
+            <InfoTooltip description="Average number of reviews received per day, calculated across the entire review period. Higher values indicate more active customer feedback." />
+          </div>
           <div className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-muted-foreground" />
-            <span className="text-2xl font-bold">{latestVelocity.toFixed(0)}</span>
+            <span className="text-2xl font-bold">{overallVelocity.toFixed(1)}</span>
             <span className="text-xs text-muted-foreground">/day</span>
           </div>
           <div className={cn(
@@ -79,28 +163,35 @@ export function SentimentVelocityChart() {
             ) : velocityTrend === 'drop' ? (
               <TrendingDown className="w-3 h-3" />
             ) : null}
-            {velocityChange > 0 ? '+' : ''}{velocityChange.toFixed(0)} vs last period
+            {velocityChange > 0 ? '+' : ''}{velocityChange.toFixed(1)} vs last week
           </div>
         </Card>
         
         <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1">Recent Reviews</p>
+          <div className="flex items-center gap-1 mb-1">
+            <p className="text-xs text-muted-foreground">Total Reviews</p>
+            <InfoTooltip description="Total number of customer reviews analyzed in the current dataset, covering all sentiment categories." />
+          </div>
           <span className="text-2xl font-bold">{totalRecent}</span>
-          <p className="text-xs text-muted-foreground mt-1">last 50 analyzed</p>
+          <p className="text-xs text-muted-foreground mt-1">all time analyzed</p>
         </Card>
         
         <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <ThumbsUp className="w-3 h-3" /> Positive
-          </p>
+          <div className="flex items-center gap-1 mb-1">
+            <ThumbsUp className="w-3 h-3 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Positive</p>
+            <InfoTooltip description="Percentage of reviews classified as positive sentiment. Higher is better for customer satisfaction." />
+          </div>
           <span className="text-2xl font-bold text-teal">{positiveRatio.toFixed(0)}%</span>
           <p className="text-xs text-muted-foreground mt-1">{sentimentCounts.positive || 0} reviews</p>
         </Card>
         
         <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <ThumbsDown className="w-3 h-3" /> Negative
-          </p>
+          <div className="flex items-center gap-1 mb-1">
+            <ThumbsDown className="w-3 h-3 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Negative</p>
+            <InfoTooltip description="Percentage of reviews classified as negative sentiment. Spikes above 30% trigger alerts for investigation." />
+          </div>
           <span className={cn("text-2xl font-bold", hasNegativeSpike ? "text-coral" : "")}>
             {negativeRatio.toFixed(0)}%
           </span>
@@ -110,7 +201,10 @@ export function SentimentVelocityChart() {
 
       {/* Velocity Timeline */}
       <Card className="p-4">
-        <h4 className="font-medium mb-4">Review Volume & Velocity</h4>
+        <div className="flex items-center gap-1 mb-4">
+          <h4 className="font-medium">Review Volume & Velocity</h4>
+          <InfoTooltip description="Stacked bar chart showing weekly review volume by sentiment type. The blue line represents daily review velocity (reviews/day) for each week." />
+        </div>
         <div className="h-[200px]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={velocityData}>
@@ -125,10 +219,10 @@ export function SentimentVelocityChart() {
                   borderRadius: '8px'
                 }}
               />
-              <Bar yAxisId="left" dataKey="positive" stackId="a" fill="hsl(var(--teal))" />
-              <Bar yAxisId="left" dataKey="neutral" stackId="a" fill="hsl(var(--muted))" />
-              <Bar yAxisId="left" dataKey="negative" stackId="a" fill="hsl(var(--coral))" />
-              <Line yAxisId="right" type="monotone" dataKey="velocity" stroke="hsl(var(--blue))" strokeWidth={2} dot={false} />
+              <Bar yAxisId="left" dataKey="positive" stackId="a" fill="hsl(var(--teal))" name="Positive" />
+              <Bar yAxisId="left" dataKey="neutral" stackId="a" fill="hsl(var(--muted))" name="Neutral" />
+              <Bar yAxisId="left" dataKey="negative" stackId="a" fill="hsl(var(--coral))" name="Negative" />
+              <Line yAxisId="right" type="monotone" dataKey="velocity" stroke="hsl(var(--blue))" strokeWidth={2} dot={false} name="Velocity/day" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -154,7 +248,10 @@ export function SentimentVelocityChart() {
 
       {/* Sentiment Score Trend */}
       <Card className="p-4">
-        <h4 className="font-medium mb-4">Average Sentiment Score</h4>
+        <div className="flex items-center gap-1 mb-4">
+          <h4 className="font-medium">Average Sentiment Score</h4>
+          <InfoTooltip description="Weekly average sentiment score (0-100). Higher scores indicate more positive customer sentiment. Tracks sentiment health over time." />
+        </div>
         <div className="h-[150px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={velocityData}>

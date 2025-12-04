@@ -1,7 +1,13 @@
 import { useFashionTrends } from '@/hooks/useDashboardData';
 import { Progress } from '@/components/ui/progress';
-import { AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export function InventoryMatchIndicator() {
   const { data: trends, isLoading } = useFashionTrends();
@@ -21,8 +27,18 @@ export function InventoryMatchIndicator() {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-muted-foreground mb-2">
-        Myntra inventory alignment with emerging trends
+      <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
+        <span>Myntra inventory alignment with emerging trends</span>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="w-4 h-4 cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[280px]">
+              <p className="text-sm"><strong>Inventory Match %</strong>: Measures how well Myntra's current product catalog aligns with trending fashion styles. Higher percentages indicate better stock coverage for emerging trends. Below 40% suggests sourcing opportunities.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       
       {emergingTrends.length === 0 ? (

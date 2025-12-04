@@ -2,8 +2,14 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useCompetitorDeals, useCompetitorProducts, useCompetitiveMetrics } from '@/hooks/useDashboardData';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, LineChart, Line } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, Target } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, Target, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip as TooltipUI,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 // Myntra's benchmark discounting data (simulated - would come from internal data)
 const myntraDiscountBenchmarks = {
@@ -90,7 +96,19 @@ export function PromotionDepthTracker() {
         </Card>
         
         <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1">Deal Intensity Score</p>
+          <div className="flex items-center gap-1 mb-1">
+            <p className="text-xs text-muted-foreground">Deal Intensity Score</p>
+            <TooltipProvider>
+              <TooltipUI>
+                <TooltipTrigger asChild>
+                  <Info className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[280px]">
+                  <p className="text-sm"><strong>Deal Intensity Score</strong>: Measures the overall level of promotional activity in the market (0-100%). Higher scores indicate heavy discounting periods (e.g., sales events). Used to gauge competitive pressure.</p>
+                </TooltipContent>
+              </TooltipUI>
+            </TooltipProvider>
+          </div>
           <span className="text-2xl font-bold">{timelineData[timelineData.length - 1]?.dealIntensity || 0}%</span>
           <p className="text-xs text-muted-foreground mt-1">market activity level</p>
         </Card>
