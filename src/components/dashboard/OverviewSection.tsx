@@ -1,4 +1,5 @@
 import { useFashionTrends, useSentimentReviews, useAlerts, useCompetitorProducts } from '@/hooks/useDashboardData';
+import { useSentimentChartData } from '@/hooks/useSentimentChartData';
 import { StatCard } from './StatCard';
 import { 
   MessageSquareText, 
@@ -21,7 +22,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useMemo } from 'react';
-import { format, subDays, startOfWeek } from 'date-fns';
 
 interface OverviewSectionProps {
   onNavigate: (section: string) => void;
@@ -67,6 +67,9 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
   const { data: alerts } = useAlerts();
   const { data: competitorProducts } = useCompetitorProducts();
   
+  // Use shared hook for sentiment chart data
+  const sentimentOverTime = useSentimentChartData(reviews as any);
+  
   // Calculate real sentiment stats from database
   const sentimentStats = useMemo(() => {
     if (!reviews || reviews.length === 0) {
@@ -104,56 +107,6 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
     return { overallScore, change: Math.round(change * 10) / 10, positive, negative, neutral, total };
   }, [reviews]);
   
-  // Calculate sentiment over time from real data (filtered to Dec 5th)
-  const sentimentOverTime = useMemo(() => {
-    if (!reviews || reviews.length === 0) {
-      return Array.from({ length: 8 }, (_, i) => ({
-        week: `W${i + 1}`,
-        positive: 0,
-        negative: 0,
-        neutral: 0
-      }));
-    }
-    
-    // Filter reviews to only include up to Dec 5th
-    const cutoffDate = new Date('2024-12-05T23:59:59');
-    const filteredReviews = reviews.filter(review => {
-      const reviewDate = new Date(review.review_date);
-      return reviewDate <= cutoffDate;
-    });
-    
-    // Group reviews by week with timestamp for sorting
-    const weeklyData: Record<string, { positive: number; negative: number; neutral: number; total: number; timestamp: number }> = {};
-    
-    filteredReviews.forEach(review => {
-      const reviewDate = new Date(review.review_date);
-      const weekStart = startOfWeek(reviewDate);
-      const weekKey = format(weekStart, 'MMM d');
-      const timestamp = weekStart.getTime();
-      
-      if (!weeklyData[weekKey]) {
-        weeklyData[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0, timestamp };
-      }
-      
-      weeklyData[weekKey][review.sentiment as 'positive' | 'negative' | 'neutral']++;
-      weeklyData[weekKey].total++;
-    });
-    
-    // Convert to array, sort chronologically by timestamp, then take last 8 weeks
-    const sortedWeeks = Object.entries(weeklyData)
-      .sort(([, a], [, b]) => a.timestamp - b.timestamp)
-      .map(([week, data]) => ({
-        week,
-        positive: data.total > 0 ? Math.round((data.positive / data.total) * 100) : 0,
-        negative: data.total > 0 ? Math.round((data.negative / data.total) * 100) : 0,
-        neutral: data.total > 0 ? Math.round((data.neutral / data.total) * 100) : 0,
-      }))
-      .slice(-8);
-    
-    return sortedWeeks.length > 0 ? sortedWeeks : [
-      { week: 'Current', positive: sentimentStats.overallScore, negative: 100 - sentimentStats.overallScore - 5, neutral: 5 }
-    ];
-  }, [reviews, sentimentStats.overallScore]);
   
   // Calculate price competitiveness from real competitor data
   const priceCompetitiveness = useMemo(() => {

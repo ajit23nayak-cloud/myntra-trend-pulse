@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSentimentReviews } from '@/hooks/useDashboardData';
+import { useSentimentChartData } from '@/hooks/useSentimentChartData';
 import { TimeframeSelector } from './TimeframeSelector';
 import { GlobalFilters } from './GlobalFilters';
 import { KeyPhraseCloud } from './KeyPhraseCloud';
@@ -12,7 +13,7 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { MessageSquare, TrendingUp, AlertTriangle, Activity, ExternalLink, BarChart3 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { TimeframeOption, CustomerCohort, RegionType, SentimentTheme } from '@/types/database';
-import { sentimentOverTime, sentimentThemes, recentFeedback } from '@/data/mockData';
+import { sentimentThemes, recentFeedback } from '@/data/mockData';
 
 const sourceIcons: Record<string, string> = {
   'Twitter': '𝕏',
@@ -44,54 +45,16 @@ export function EnhancedSentimentSection() {
     region, 
     limit: 500 
   });
+  
+  // Use shared hook for sentiment chart data (same as Overview page)
+  const chartData = useSentimentChartData(reviews as any);
+  
   // Filter reviews by category locally (since product_category is in the data)
   const filteredReviews = useMemo(() => {
     if (!reviews) return [];
     if (!category) return reviews;
     return reviews.filter(r => r.product_category?.toLowerCase().includes(category.toLowerCase()));
   }, [reviews, category]);
-
-  // Calculate sentiment trend data from actual reviews (filtered to Dec 5th, percentage-based like Overview)
-  const chartData = useMemo(() => {
-    if (!reviews || reviews.length === 0) return sentimentOverTime;
-    
-    // Filter reviews to only include up to Dec 5th
-    const cutoffDate = new Date('2024-12-05T23:59:59');
-    const filteredReviews = reviews.filter(review => {
-      const reviewDate = new Date(review.review_date);
-      return reviewDate <= cutoffDate;
-    });
-    
-    // Group reviews by week with timestamp for proper sorting
-    const reviewsByWeek = filteredReviews.reduce((acc: Record<string, { positive: number; negative: number; neutral: number; total: number; timestamp: number }>, review) => {
-      const date = new Date(review.review_date);
-      const weekStart = new Date(date);
-      weekStart.setDate(date.getDate() - date.getDay());
-      weekStart.setHours(0, 0, 0, 0);
-      const timestamp = weekStart.getTime();
-      const weekKey = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      
-      if (!acc[weekKey]) {
-        acc[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0, timestamp };
-      }
-      acc[weekKey][review.sentiment]++;
-      acc[weekKey].total++;
-      return acc;
-    }, {});
-
-    // Convert to array, sort chronologically, and calculate percentages
-    const sortedWeeks = Object.entries(reviewsByWeek)
-      .sort(([, a], [, b]) => a.timestamp - b.timestamp)
-      .map(([week, data]) => ({
-        week,
-        positive: data.total > 0 ? Math.round((data.positive / data.total) * 100) : 0,
-        negative: data.total > 0 ? Math.round((data.negative / data.total) * 100) : 0,
-        neutral: data.total > 0 ? Math.round((data.neutral / data.total) * 100) : 0,
-      }))
-      .slice(-8);
-
-    return sortedWeeks.length > 0 ? sortedWeeks : sentimentOverTime;
-  }, [reviews]);
 
   const feedbackData = filteredReviews?.length ? filteredReviews.slice(0, 10) : recentFeedback;
 
