@@ -51,12 +51,19 @@ export function EnhancedSentimentSection() {
     return reviews.filter(r => r.product_category?.toLowerCase().includes(category.toLowerCase()));
   }, [reviews, category]);
 
-  // Calculate sentiment trend data from actual reviews
+  // Calculate sentiment trend data from actual reviews (filtered to Dec 5th, percentage-based like Overview)
   const chartData = useMemo(() => {
     if (!reviews || reviews.length === 0) return sentimentOverTime;
     
+    // Filter reviews to only include up to Dec 5th
+    const cutoffDate = new Date('2024-12-05T23:59:59');
+    const filteredReviews = reviews.filter(review => {
+      const reviewDate = new Date(review.review_date);
+      return reviewDate <= cutoffDate;
+    });
+    
     // Group reviews by week with timestamp for proper sorting
-    const reviewsByWeek = reviews.reduce((acc: Record<string, { positive: number; negative: number; neutral: number; timestamp: number }>, review) => {
+    const reviewsByWeek = filteredReviews.reduce((acc: Record<string, { positive: number; negative: number; neutral: number; total: number; timestamp: number }>, review) => {
       const date = new Date(review.review_date);
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
@@ -65,16 +72,23 @@ export function EnhancedSentimentSection() {
       const weekKey = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       
       if (!acc[weekKey]) {
-        acc[weekKey] = { positive: 0, negative: 0, neutral: 0, timestamp };
+        acc[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0, timestamp };
       }
       acc[weekKey][review.sentiment]++;
+      acc[weekKey].total++;
       return acc;
     }, {});
 
-    // Convert to array and sort chronologically by timestamp
+    // Convert to array, sort chronologically, and calculate percentages
     const sortedWeeks = Object.entries(reviewsByWeek)
       .sort(([, a], [, b]) => a.timestamp - b.timestamp)
-      .map(([week, { positive, negative, neutral }]) => ({ week, positive, negative, neutral }));
+      .map(([week, data]) => ({
+        week,
+        positive: data.total > 0 ? Math.round((data.positive / data.total) * 100) : 0,
+        negative: data.total > 0 ? Math.round((data.negative / data.total) * 100) : 0,
+        neutral: data.total > 0 ? Math.round((data.neutral / data.total) * 100) : 0,
+      }))
+      .slice(-8);
 
     return sortedWeeks.length > 0 ? sortedWeeks : sentimentOverTime;
   }, [reviews]);
@@ -144,25 +158,54 @@ export function EnhancedSentimentSection() {
                 <Badge variant="outline" className="ml-2 text-xs">Filtered</Badge>
               )}
             </h3>
-            <div className="h-64">
+            <div className="flex items-center gap-4 mb-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-teal" />
+                <span className="text-muted-foreground">Positive</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-coral" />
+                <span className="text-muted-foreground">Negative</span>
+              </div>
+            </div>
+            <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
-                    <linearGradient id="positiveGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--teal))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--teal))" stopOpacity={0} />
+                    <linearGradient id="sentimentPositiveGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(172, 66%, 50%)" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="hsl(172, 66%, 50%)" stopOpacity={0}/>
                     </linearGradient>
-                    <linearGradient id="negativeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--coral))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--coral))" stopOpacity={0} />
+                    <linearGradient id="sentimentNegativeGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="week" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                  <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-                  <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} />
-                  <Area type="monotone" dataKey="positive" stroke="hsl(var(--teal))" fill="url(#positiveGradient)" />
-                  <Area type="monotone" dataKey="negative" stroke="hsl(var(--coral))" fill="url(#negativeGradient)" />
+                  <XAxis dataKey="week" stroke="hsl(215, 20%, 55%)" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(215, 20%, 55%)" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      color: 'hsl(var(--foreground))'
+                    }} 
+                    formatter={(value: number, name: string) => [`${value}%`, name.charAt(0).toUpperCase() + name.slice(1)]}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="positive" 
+                    stroke="hsl(172, 66%, 50%)" 
+                    fill="url(#sentimentPositiveGradient)" 
+                    strokeWidth={2} 
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="negative" 
+                    stroke="hsl(0, 84%, 60%)" 
+                    fill="url(#sentimentNegativeGradient)" 
+                    strokeWidth={2} 
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

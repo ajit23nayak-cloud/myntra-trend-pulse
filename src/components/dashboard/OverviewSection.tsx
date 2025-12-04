@@ -104,10 +104,9 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
     return { overallScore, change: Math.round(change * 10) / 10, positive, negative, neutral, total };
   }, [reviews]);
   
-  // Calculate sentiment over time from real data
+  // Calculate sentiment over time from real data (filtered to Dec 5th)
   const sentimentOverTime = useMemo(() => {
     if (!reviews || reviews.length === 0) {
-      // Return empty weeks
       return Array.from({ length: 8 }, (_, i) => ({
         week: `W${i + 1}`,
         positive: 0,
@@ -116,10 +115,17 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
       }));
     }
     
+    // Filter reviews to only include up to Dec 5th
+    const cutoffDate = new Date('2024-12-05T23:59:59');
+    const filteredReviews = reviews.filter(review => {
+      const reviewDate = new Date(review.review_date);
+      return reviewDate <= cutoffDate;
+    });
+    
     // Group reviews by week with timestamp for sorting
     const weeklyData: Record<string, { positive: number; negative: number; neutral: number; total: number; timestamp: number }> = {};
     
-    reviews.forEach(review => {
+    filteredReviews.forEach(review => {
       const reviewDate = new Date(review.review_date);
       const weekStart = startOfWeek(reviewDate);
       const weekKey = format(weekStart, 'MMM d');
