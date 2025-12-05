@@ -37,7 +37,7 @@ export function SentimentVelocityChart() {
       return { velocityData: [], latestVelocity: 0, velocityChange: 0, velocityTrend: 'stable' as const };
     }
 
-    // Group reviews by week
+    // Group reviews by week and track unique days
     const weeklyData: Record<string, { 
       positive: number; 
       negative: number; 
@@ -46,35 +46,47 @@ export function SentimentVelocityChart() {
       timestamp: number;
       avgScore: number;
       scoreSum: number;
+      uniqueDays: Set<string>;
     }> = {};
 
+    // Filter to only include reviews up to current date
+    const cutoffDate = new Date('2025-12-05T23:59:59');
+    
     recentReviews.forEach(review => {
       const reviewDate = new Date(review.review_date);
+      if (reviewDate > cutoffDate) return; // Skip future reviews
+      
       const weekStart = startOfWeek(reviewDate);
       const weekKey = format(weekStart, 'MMM d');
       const timestamp = weekStart.getTime();
+      const dayKey = format(reviewDate, 'yyyy-MM-dd');
 
       if (!weeklyData[weekKey]) {
-        weeklyData[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0, timestamp, avgScore: 0, scoreSum: 0 };
+        weeklyData[weekKey] = { positive: 0, negative: 0, neutral: 0, total: 0, timestamp, avgScore: 0, scoreSum: 0, uniqueDays: new Set() };
       }
 
       weeklyData[weekKey][review.sentiment as 'positive' | 'negative' | 'neutral']++;
       weeklyData[weekKey].total++;
       weeklyData[weekKey].scoreSum += review.sentiment_score || 0;
+      weeklyData[weekKey].uniqueDays.add(dayKey);
     });
 
     // Convert to array sorted by timestamp
     const sortedWeeks = Object.entries(weeklyData)
       .sort(([, a], [, b]) => a.timestamp - b.timestamp)
-      .map(([period, data]) => ({
-        period,
-        total: data.total,
-        positive: data.positive,
-        negative: data.negative,
-        neutral: data.neutral,
-        velocity: Math.round(data.total / 7 * 10) / 10, // reviews per day
-        avgScore: data.total > 0 ? Math.round((data.scoreSum / data.total) * 100) : 50,
-      }))
+      .map(([period, data]) => {
+        // Use actual number of days with reviews (min 1 to avoid division by zero)
+        const daysWithReviews = Math.max(data.uniqueDays.size, 1);
+        return {
+          period,
+          total: data.total,
+          positive: data.positive,
+          negative: data.negative,
+          neutral: data.neutral,
+          velocity: Math.round(data.total / daysWithReviews * 10) / 10, // reviews per actual day
+          avgScore: data.total > 0 ? Math.round((data.scoreSum / data.total) * 100) : 50,
+        };
+      })
       .slice(-8);
 
     const latestVelocity = sortedWeeks[sortedWeeks.length - 1]?.velocity || 0;
