@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const timelineOptions = [
   { label: 'Last 15 days', value: '15d' },
@@ -73,6 +74,8 @@ export function Header({ onTimelineChange }: HeaderProps) {
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
+
+          <ThemeToggle />
           
           <div className="w-px h-8 bg-border mx-1 md:mx-2 hidden sm:block" />
           
