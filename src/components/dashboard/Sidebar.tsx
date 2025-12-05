@@ -28,8 +28,8 @@ const navItems = [
   { id: 'trends', label: 'Fashion Trends', icon: TrendingUp, route: '/fashion-trends' },
   { id: 'sentiment', label: 'Sentiment Analysis', icon: MessageSquareText, route: '/' },
   { id: 'competitor', label: 'Competitor Intel', icon: Target, route: '/' },
-  { id: 'insights', label: 'Insights', icon: Lightbulb, route: '/' },
-  { id: 'alerts', label: 'Alerts', icon: Bell, route: '/' },
+  { id: 'insights', label: 'Actionable Insights', icon: Lightbulb, route: '/' },
+  { id: 'alerts', label: 'Real-time Alerts', icon: Bell, route: '/' },
 ];
 
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
