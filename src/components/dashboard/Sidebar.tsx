@@ -44,9 +44,11 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       navigate('/fashion-trends');
     } else {
       if (location.pathname !== '/') {
-        navigate('/');
+        // Pass section via state when navigating from another page
+        navigate('/', { state: { section: item.id } });
+      } else {
+        onSectionChange(item.id);
       }
-      onSectionChange(item.id);
     }
     if (isMobile) {
       setMobileOpen(false);

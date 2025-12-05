@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
 import { OverviewSection } from '@/components/dashboard/OverviewSection';
@@ -12,7 +13,18 @@ import { DataRefreshPanel } from '@/components/dashboard/DataRefreshPanel';
 import { cn } from '@/lib/utils';
 
 const Index = () => {
+  const location = useLocation();
   const [activeSection, setActiveSection] = useState('overview');
+
+  // Handle section passed via navigation state
+  useEffect(() => {
+    const state = location.state as { section?: string } | null;
+    if (state?.section) {
+      setActiveSection(state.section);
+      // Clear the state to prevent re-triggering on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const renderSection = () => {
     switch (activeSection) {
