@@ -10,6 +10,7 @@ import { EnhancedInsightsSection } from '@/components/dashboard/EnhancedInsights
 import { AlertsSection } from '@/components/dashboard/AlertsSection';
 import { RealTimeAlertBanner } from '@/components/dashboard/RealTimeAlertBanner';
 import { DataRefreshPanel } from '@/components/dashboard/DataRefreshPanel';
+import { VoiceBotTrigger } from '@/components/VoiceBot';
 import { cn } from '@/lib/utils';
 
 const Index = () => {
@@ -64,6 +65,8 @@ const Index = () => {
           {renderSection()}
         </div>
       </main>
+      
+      <VoiceBotTrigger />
     </div>
   );
 };
