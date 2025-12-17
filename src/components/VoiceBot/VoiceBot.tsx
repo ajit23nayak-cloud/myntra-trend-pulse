@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, X, Send, Volume2, VolumeX, Bot, Loader2 } from 'lucide-react';
+import { Mic, MicOff, X, Send, Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -204,7 +204,7 @@ export const VoiceBot = ({ isOpen, onClose }: VoiceBotProps) => {
       <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-primary/10 to-accent/10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-            <Bot className="w-5 h-5 text-primary" />
+            <span className="text-xl">🤖</span>
           </div>
           <div>
             <h3 className="font-semibold text-foreground">TrendPulse AI</h3>

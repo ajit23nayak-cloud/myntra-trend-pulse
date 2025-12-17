@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VoiceBot } from './VoiceBot';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,7 @@ export const VoiceBotTrigger = () => {
         {isOpen ? (
           <X className="h-6 w-6 text-primary-foreground" />
         ) : (
-          <Bot className="h-6 w-6 text-primary-foreground" />
+          <span className="text-2xl">🤖</span>
         )}
       </Button>
       
