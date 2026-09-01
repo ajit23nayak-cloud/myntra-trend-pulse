@@ -1,73 +1,55 @@
-# Welcome to your Lovable project
+# Myntra TrendPulse
 
-## Project info
+A fashion intelligence dashboard for a category team. It scrapes competitor pricing, app-store reviews and trend signals on a schedule, stores them in Postgres, and turns them into recommendations that carry an expected outcome and a place to mark whether it worked.
 
-**URL**: https://lovable.dev/projects/eac72464-0190-42e9-ad81-5b50f68601cd
+Built on Lovable, running on Supabase.
 
-## How can I edit this code?
+## What it does
 
-There are several ways of editing your application.
+| Section | What it surfaces |
+|---|---|
+| Overview | Sentiment, trend and price-gap KPIs, weekly sentiment line, hot trends, competitor activity |
+| Fashion trends | Trend list with status filter, lifecycle forecast, inventory match, regional view |
+| Sentiment analysis | Sentiment by theme and by source, review velocity, positive phrases and pain points |
+| Competitor intel | SKU-matched price comparison, price-gap timeline, flash sales, promotion depth |
+| Actionable insights | Recommendations with impact, action and expected outcome. Mark actioned or dismissed, then track what happened |
+| Real-time alerts | Severity filters, acknowledge, resolve |
 
-**Use Lovable**
+There is also a voice bot you can ask questions like "what are the current sentiment trends" and a Refresh All control that triggers the scrapers on demand.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/eac72464-0190-42e9-ad81-5b50f68601cd) and start prompting.
+## How the data gets there
 
-Changes made via Lovable will be committed automatically to this repo.
+Five Supabase edge functions do the work.
 
-**Use your preferred IDE**
+| Function | Job |
+|---|---|
+| `scrape-competitor-data` | Competitor pricing and deals |
+| `scrape-reviews` | App Store and Play Store reviews |
+| `scrape-trends` | Google Trends, Instagram, Twitter, and Indian fashion press |
+| `generate-insights` | Turns the stored signals into ranked recommendations |
+| `dashboard-chat` | Answers questions against the dashboard's own data |
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+Scraping goes through Firecrawl. The AI layer runs through Lovable's gateway. Both keys live in Supabase edge-function secrets and are read at runtime, so neither is in this repository.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+Fourteen tables behind it, including `competitor_products`, `price_history`, `sentiment_reviews`, `trend_forecasts`, `insights` and `scrape_logs`. Five migrations, all in `supabase/migrations/`.
 
-Follow these steps:
+## The part worth looking at
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+The Actionable Insights page. Every recommendation states its expected outcome before you act on it, and can be marked actioned or dismissed with the result recorded afterwards. So the tool keeps score of its own hit rate. Most dashboards produce advice nobody ever checks.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Stack
 
-# Step 3: Install the necessary dependencies.
-npm i
+React, TypeScript, Vite, Tailwind, shadcn/ui, Recharts. Supabase for Postgres, auth and edge functions. Deno on the function side. Firecrawl for scraping.
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+## Running it
+
+```bash
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+`.env` holds only the Supabase project URL, project ID and the publishable anon key. Those are compiled into the browser bundle by design and are safe in the open. Every privileged key sits in Supabase edge-function secrets, set separately.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## A note on the data
 
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/eac72464-0190-42e9-ad81-5b50f68601cd) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Figures on screen depend on when the scrapers last ran. Treat anything you see as a snapshot of that moment. It is not live market data.
