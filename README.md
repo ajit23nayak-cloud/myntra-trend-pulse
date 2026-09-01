@@ -23,11 +23,24 @@ Five Supabase edge functions do the work.
 
 | Function | Job |
 |---|---|
-| `scrape-competitor-data` | Competitor pricing and deals |
-| `scrape-reviews` | App Store and Play Store reviews |
-| `scrape-trends` | Google Trends, Instagram, Twitter, and Indian fashion press |
+| `scrape-competitor-data` | Competitor pricing and deals, 456 lines |
+| `scrape-reviews` | Customer reviews across seven sources, 326 lines |
+| `scrape-trends` | Trend signals across nine sources, 472 lines |
 | `generate-insights` | Turns the stored signals into ranked recommendations |
 | `dashboard-chat` | Answers questions against the dashboard's own data |
+
+### Sources it reads
+
+| Signal | Where it comes from |
+|---|---|
+| App reviews | Apple App Store, Google Play |
+| Review sites | Trustpilot, MouthShut |
+| Social | Twitter, Pinterest, TikTok, Instagram hashtags (`#indianfashion`, `#indiastreetstyle`), YouTube |
+| Search interest | Google Trends |
+| Fashion press | Vogue India, Elle India, Cosmopolitan India |
+| Competitor pricing | Firecrawl search, resolved at run time |
+
+Every fetch goes through Firecrawl. Each run writes a row to `scrape_logs`, so you can see when a source last returned anything.
 
 Scraping goes through Firecrawl. The AI layer runs through Lovable's gateway. Both keys live in Supabase edge-function secrets and are read at runtime, so neither is in this repository.
 
