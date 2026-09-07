@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Calendar, User, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +21,7 @@ interface HeaderProps {
 }
 
 export function Header({ onTimelineChange }: HeaderProps) {
+  const queryClient = useQueryClient();
   const [selectedTimeline, setSelectedTimeline] = useState('30d');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -29,11 +31,20 @@ export function Header({ onTimelineChange }: HeaderProps) {
     onTimelineChange?.(value);
   };
 
+  /**
+   * Re-read every table from Postgres.
+   *
+   * This used to be a one-second sleep with a spinning icon and no fetch, so it
+   * looked like it worked and never did. It refetches what is already stored; it
+   * does not run the scrapers. That is the Refresh All panel, owner only.
+   */
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    // Simulate refresh - in production this would trigger data fetch
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsRefreshing(false);
+    try {
+      await queryClient.invalidateQueries();
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const selectedLabel = timelineOptions.find(t => t.value === selectedTimeline)?.label || 'Last 30 days';

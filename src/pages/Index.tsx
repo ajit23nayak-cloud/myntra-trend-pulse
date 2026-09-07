@@ -11,11 +11,13 @@ import { AlertsSection } from '@/components/dashboard/AlertsSection';
 import { RealTimeAlertBanner } from '@/components/dashboard/RealTimeAlertBanner';
 import { DataRefreshPanel } from '@/components/dashboard/DataRefreshPanel';
 import { VoiceBotTrigger } from '@/components/VoiceBot';
+import { useAdminMode } from '@/hooks/useAdminMode';
 import { cn } from '@/lib/utils';
 
 const Index = () => {
   const location = useLocation();
   const [activeSection, setActiveSection] = useState('overview');
+  const isAdmin = useAdminMode();
 
   // Handle section passed via navigation state
   useEffect(() => {
@@ -61,7 +63,7 @@ const Index = () => {
         
         <div className="p-4 md:p-6 space-y-4 md:space-y-6 pt-16 md:pt-6">
           {activeSection === 'alerts' && <RealTimeAlertBanner />}
-          {activeSection === 'overview' && <DataRefreshPanel />}
+          {activeSection === 'overview' && isAdmin && <DataRefreshPanel />}
           {renderSection()}
         </div>
       </main>

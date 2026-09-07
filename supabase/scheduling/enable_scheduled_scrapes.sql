@@ -1,3 +1,9 @@
+-- OPTIONAL. Not a migration, and deliberately not in supabase/migrations/ so it
+-- is never applied automatically. Scheduled scraping is OFF by default; the
+-- owner refreshes on demand from the Refresh All panel. Run this by hand in the
+-- Supabase SQL editor to turn the schedule on, and run
+-- scheduling/disable_scheduled_scrapes.sql to turn it back off.
+--
 -- Run the scrapers on a schedule instead of only when someone clicks Refresh All.
 --
 -- The README described scheduled scraping, but nothing scheduled anything: the

@@ -1,6 +1,6 @@
 # Myntra TrendPulse
 
-A fashion intelligence dashboard for a category team. It scrapes competitor pricing, app-store reviews and trend signals every few hours, stores them in Postgres, and turns them into recommendations that carry an expected outcome and a place to mark whether it worked.
+A fashion intelligence dashboard for a category team. It scrapes competitor pricing, app-store reviews and trend signals, stores them in Postgres, and turns them into recommendations that carry an expected outcome and a place to mark whether it worked.
 
 Every number on screen comes from the database. Where a table is empty, the page says so rather than showing a stand-in.
 
@@ -46,19 +46,14 @@ Every fetch goes through Firecrawl. Each run writes a row to `scrape_logs`, so y
 
 ### When they run
 
-`pg_cron` runs them inside Postgres, staggered so they do not collide on Firecrawl's rate limit. All times UTC.
+On demand. Scheduled scraping is off by default, so the scrapers run only when the owner opens the Refresh All panel and asks for it.
 
-| Job | Schedule |
-|---|---|
-| `scrape-competitor-data` | every 6 hours, on the hour |
-| `scrape-reviews` | every 6 hours, 20 past |
-| `scrape-trends` | every 12 hours, 40 past |
-| `generate-insights` | 01:00, 07:00, 13:00, 19:00, after the scrapers |
+The Overview header shows how old the newest completed run is and turns amber past 24 hours, so stale data announces itself rather than passing as current.
 
-Refresh All on the Overview page triggers the same functions on demand. The header shows how old the newest completed run is, and turns amber past 24 hours.
+To hand the job to a schedule instead, run `supabase/scheduling/enable_scheduled_scrapes.sql` by hand in the Supabase SQL editor. It registers four staggered `pg_cron` jobs — competitor data and reviews every 6 hours, trends every 12, insights after them — and `disable_scheduled_scrapes.sql` removes them again. Neither file lives in `migrations/`, so neither is ever applied automatically.
 
 ```sql
--- what is scheduled
+-- what is scheduled, if anything
 select jobname, schedule, active from cron.job where jobname like 'trendpulse-%';
 
 -- recent runs and failures
@@ -66,6 +61,17 @@ select j.jobname, r.status, r.return_message, r.start_time
 from cron.job_run_details r join cron.job j on j.jobid = r.jobid
 where j.jobname like 'trendpulse-%' order by r.start_time desc limit 20;
 ```
+
+### Triggering a refresh
+
+Two different buttons, doing two different things.
+
+| Control | What it does | Who sees it |
+|---|---|---|
+| Refresh icon, top right | Re-reads the tables already in Postgres | Everyone |
+| Refresh All panel, Overview | Runs the scrapers, fetching new data from the web | Owner only |
+
+The panel is hidden unless the browser has been to `?admin=1` once, which it remembers; `?admin=0` forgets it. That keeps a visitor from casually spending Firecrawl credits. It is a curtain, not a lock — see below.
 
 Scraping goes through Firecrawl. The AI layer runs through Lovable's gateway. Both keys live in Supabase edge-function secrets and are read at runtime, so neither is in this repository.
 
@@ -101,7 +107,7 @@ Writes are not. The scrapers connect with the service-role key, which bypasses r
 
 Everything else — inserts, deletes, and every other column — is service-role only.
 
-One gap remains by choice. The edge functions run with `verify_jwt = false`, so anyone who finds the repository can trigger a scrape and spend Firecrawl credits. Closing it means putting a login in front of the dashboard, because Refresh All calls the same endpoints from the browser and cannot hold a secret.
+One gap remains by choice. The edge functions run with `verify_jwt = false`, so anyone who finds the repository can call a scrape endpoint directly and spend Firecrawl credits. Hiding the Refresh All panel behind `?admin=1` stops casual clicks, but it is a curtain over the button, not a lock on the endpoint. Closing it properly means putting real auth in front of the dashboard and having the functions reject anyone who is not the owner.
 
 ## A note on the data
 
