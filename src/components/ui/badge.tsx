@@ -25,8 +25,14 @@ const badgeVariants = cva(
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
-}
+// Forwards its ref because badges get used inside Radix `asChild` slots, such as
+// TooltipTrigger. Without it Radix cannot measure the element, so the tooltip
+// fails to position and React logs a warning on every render.
+const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
+  ({ className, variant, ...props }, ref) => (
+    <div ref={ref} className={cn(badgeVariants({ variant }), className)} {...props} />
+  ),
+);
+Badge.displayName = "Badge";
 
 export { Badge, badgeVariants };
