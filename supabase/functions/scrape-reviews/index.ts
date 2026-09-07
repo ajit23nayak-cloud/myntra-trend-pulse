@@ -92,8 +92,41 @@ serve(async (req) => {
 
     console.log(`\nScraped ${successfulSources}/${reviewSources.length} sources successfully`);
 
-    // Use Lovable AI to analyze reviews and extract sentiment
-    console.log('Analyzing reviews with AI...');
+    // Stop here if nothing came back. Without this the function still called the
+    // model with an empty payload, and the model, told to "generate 30-40 reviews",
+    // duly produced 30-40 out of thin air and they were stored as findings.
+    // Twitter and TikTok block scrapers routinely, so this path was not rare.
+    if (allReviewContent.trim().length < 200) {
+      console.error('No usable review content scraped. Storing nothing.');
+
+      await supabase.from('scrape_logs').insert({
+        source: 'Multi-Platform Reviews',
+        scrape_type: 'reviews',
+        status: 'failed',
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        records_processed: 0,
+        errors: {
+          sources_attempted: reviewSources.length,
+          sources_succeeded: successfulSources,
+          note: 'No source returned usable content, so no reviews were written.',
+        },
+      });
+
+      return new Response(JSON.stringify({
+        success: false,
+        reason: 'no_content_scraped',
+        sources_attempted: reviewSources.length,
+        sources_succeeded: successfulSources,
+        reviews_stored: 0,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Use Lovable AI to extract the reviews that are present in the scraped text
+    console.log('Extracting reviews with AI...');
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -105,28 +138,27 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are a sentiment analysis expert for e-commerce reviews. Analyze the provided reviews from multiple sources (Play Store, App Store, TikTok, Pinterest, Twitter) and extract structured data. 
+            content: `You extract customer reviews that are literally present in scraped page content. You never write reviews of your own.
 
-IMPORTANT: Generate reviews with dates spread across the LAST 4 MONTHS (September 2025 to December 2025). Return a JSON array of reviews with this exact structure:
+Return a JSON array. One entry per review you actually found in the text:
 [{
-  "review_text": "string (the actual review text, max 500 chars)",
+  "review_text": "string — copied from the source, trimmed to 500 chars, never paraphrased or invented",
   "sentiment": "positive" | "negative" | "neutral",
-  "sentiment_score": number (-1 to 1, where -1 is very negative, 1 is very positive),
-  "theme": "product_quality" | "pricing" | "delivery" | "returns" | "customer_service" | "app_usability",
-  "key_phrases": ["string"],
-  "source": "Play Store" | "App Store" | "TikTok" | "Pinterest" | "Twitter" | "Trustpilot" | "MouthShut",
-  "customer_cohort": "gen_z" | "millennial" | "gen_x" | "new_user" | "returning_user" | "loyal_user",
-  "region": "metro" | "tier_1" | "tier_2" | "tier_3",
-  "review_date": "YYYY-MM-DD (spread across last 4 months: Aug, Sep, Oct, Nov, Dec 2025)"
+  "sentiment_score": number (-1 to 1),
+  "theme": "product_quality" | "pricing" | "delivery" | "returns" | "customer_service" | "app_usability" | null,
+  "key_phrases": ["string — phrases that appear verbatim in review_text"],
+  "source": "the source header the review appeared under",
+  "customer_cohort": null unless the review itself states the writer's age group,
+  "region": null unless the review itself names a place,
+  "review_date": "YYYY-MM-DD if a date is shown with the review, otherwise null"
 }]
 
-Guidelines:
-- Generate 30-40 reviews spread evenly across August, September, October, November, December 2025
-- TikTok/Pinterest reviews are often from GenZ users
-- Look for hashtags and mentions to determine sentiment
-- Twitter reviews often contain delivery/service complaints
-- App Store reviews focus on app usability
-- Mix of positive (40%), negative (35%), neutral (25%) sentiment
+Rules, in order of importance:
+- Extract only. If the content contains no reviews, return []. An empty array is a correct answer and is far better than a plausible one.
+- Never invent a date. Most scraped reviews carry no date; null is expected and fine.
+- Never guess cohort or region. A store review almost never states either, so these are usually null.
+- There is no target count and no target sentiment mix. Return what is there, however many or few, and let the distribution fall where it falls.
+- Judge sentiment from the words in each review, not from what the overall spread ought to look like.
 - Return ONLY valid JSON, no markdown or explanation.`
           },
           {
@@ -160,30 +192,30 @@ Guidelines:
     // Store reviews in database
     let storedCount = 0;
     for (const review of reviews) {
-      // Use review_date from AI or generate random date in last 4 months
-      let reviewDate = review.review_date;
-      if (!reviewDate) {
-        const monthsAgo = Math.floor(Math.random() * 4);
-        const daysAgo = Math.floor(Math.random() * 30);
-        const date = new Date();
-        date.setMonth(date.getMonth() - monthsAgo);
-        date.setDate(date.getDate() - daysAgo);
-        reviewDate = date.toISOString();
-      } else {
-        reviewDate = new Date(reviewDate).toISOString();
-      }
-      
+      // An unknown date stays unknown. This used to roll a random month and day
+      // inside the last four months, so every review carried a date that was
+      // never observed anywhere, and the sentiment-over-time chart was drawn on
+      // dice rolls.
+      const parsed = review.review_date ? new Date(review.review_date) : null;
+      const reviewDate = parsed && !Number.isNaN(parsed.getTime())
+        ? parsed.toISOString()
+        : null;
+
       const { error: reviewError } = await supabase
         .from('sentiment_reviews')
         .insert({
           review_text: review.review_text,
           sentiment: review.sentiment,
           sentiment_score: review.sentiment_score,
-          theme: review.theme,
+          theme: review.theme ?? null,
           key_phrases: review.key_phrases || [],
-          source: review.source || 'Play Store',
-          customer_cohort: review.customer_cohort || 'millennial',
-          region: review.region || 'metro',
+          source: review.source || null,
+          // Store-front reviews almost never state the writer's age group or city,
+          // so these are normally unknown. Defaulting them to 'millennial' and
+          // 'metro' invented an audience and gave the cohort and region filters
+          // something confident to slice that nobody had measured.
+          customer_cohort: review.customer_cohort ?? null,
+          region: review.region ?? null,
           review_date: reviewDate,
           scraped_at: new Date().toISOString(),
         });
@@ -239,10 +271,17 @@ Guidelines:
     await supabase.from('scrape_logs').insert({
       source: 'Multi-Platform Reviews',
       scrape_type: 'reviews',
-      status: 'completed',
+      // records_processed is what was actually written, not what the model returned.
+      status: storedCount > 0 ? 'completed' : 'failed',
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
-      records_processed: reviews.length,
+      records_processed: storedCount,
+      errors: storedCount > 0 && successfulSources === reviewSources.length ? null : {
+        sources_attempted: reviewSources.length,
+        sources_succeeded: successfulSources,
+        reviews_extracted: reviews.length,
+        reviews_stored: storedCount,
+      },
     });
 
     const sentimentBreakdown = {

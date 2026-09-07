@@ -29,12 +29,16 @@ export function PriceGapTimeline() {
     if (!acc[category]) {
       acc[category] = { category, totalGap: 0, count: 0, myntraWins: 0, ajioWins: 0 };
     }
-    acc[category].totalGap += product.price_difference || 0;
-    acc[category].count += 1;
-    if ((product.price_difference || 0) < 0) {
-      acc[category].myntraWins += 1;
-    } else {
-      acc[category].ajioWins += 1;
+    // Skip products with no Myntra price. Treating those as a zero gap counted
+    // them as an AJIO win, because the old `else` branch caught every missing value.
+    if (typeof product.price_difference === 'number') {
+      acc[category].totalGap += product.price_difference;
+      acc[category].count += 1;
+      if (product.price_difference < 0) {
+        acc[category].myntraWins += 1;
+      } else {
+        acc[category].ajioWins += 1;
+      }
     }
     return acc;
   }, {} as Record<string, { category: string; totalGap: number; count: number; myntraWins: number; ajioWins: number }>) || {};

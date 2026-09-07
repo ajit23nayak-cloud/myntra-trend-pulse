@@ -170,9 +170,6 @@ serve(async (req) => {
     // Store products in database
     let productsStored = 0;
     for (const product of uniqueProducts.slice(0, 50)) {
-      const myntraPrice = estimateMyntraPrice(product.price, product.category);
-      const priceDiff = myntraPrice - product.price;
-
       const { error: productError } = await supabase
         .from('competitor_products')
         .upsert({
@@ -184,8 +181,12 @@ serve(async (req) => {
           discount_percentage: product.discount,
           brand: product.brand,
           in_stock: true,
-          myntra_equivalent_price: myntraPrice,
-          price_difference: priceDiff,
+          // Myntra is never scraped, so there is nothing to compare against. This
+          // used to hold AJIO's price multiplied by a per-category constant and a
+          // random factor, which made Myntra look dearer by construction and drove
+          // a "price competitiveness" figure that measured nothing.
+          myntra_equivalent_price: null,
+          price_difference: null,
           product_url: product.url,
         }, { 
           onConflict: 'competitor,product_name,category',
@@ -216,36 +217,31 @@ serve(async (req) => {
       });
     }
 
-    // Create insight for price competitiveness
-    const underpriced = uniqueProducts.filter(p => {
-      const myntraPrice = estimateMyntraPrice(p.price, p.category);
-      return myntraPrice - p.price > 200;
-    });
+    // No price-gap insight is generated any more. It compared AJIO's price against
+    // estimateMyntraPrice(), whose category multipliers were all above 1.0, so the
+    // gap was positive by arithmetic and the insight always fired with a hardcoded
+    // 0.82 confidence. Restoring it requires actually scraping Myntra.
 
-    if (underpriced.length > 0) {
-      await supabase.from('insights').insert({
-        title: `💰 Price Gap Alert: ${underpriced.length} Products Cheaper on AJIO`,
-        description: `${underpriced.length} products in categories ${[...new Set(underpriced.map(p => p.category))].join(', ')} are significantly cheaper on AJIO.`,
-        type: 'alert',
-        impact_level: underpriced.length > 5 ? 'critical' : 'high',
-        category: 'Competitive Pricing',
-        recommendation: `Consider price matching or promotional discounts for: ${underpriced.slice(0, 3).map(p => p.category).join(', ')}`,
-        data_source: 'competitor-scraper-search',
-        confidence_score: 0.82,
-      });
-    }
-
-    // Log scrape activity
+    // Log the run honestly. A run that stored nothing is a failed run, not a
+    // completed one; marking it completed is what let the dashboard report fresh
+    // data after every source had been blocked.
+    const storedAnything = dealsStored + productsStored > 0;
     await supabase.from('scrape_logs').insert({
       source: 'AJIO Competitor (Search API)',
       scrape_type: 'competitor_data',
-      status: 'completed',
+      status: storedAnything ? 'completed' : 'failed',
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
       records_processed: dealsStored + productsStored,
-      errors: successfulSearches < searchQueries.length ? { 
-        failed_searches: searchQueries.length - successfulSearches 
-      } : null,
+      errors: storedAnything && successfulSearches === searchQueries.length ? null : {
+        failed_searches: searchQueries.length - successfulSearches,
+        products_extracted: uniqueProducts.length,
+        products_stored: productsStored,
+        deals_stored: dealsStored,
+        note: storedAnything
+          ? 'Some searches failed.'
+          : 'No product or deal survived validation. AJIO most likely served an anti-bot page.',
+      },
     });
 
     return new Response(JSON.stringify({
@@ -257,7 +253,6 @@ serve(async (req) => {
       products_extracted: uniqueProducts.length,
       products_stored: productsStored,
       high_impact_deals: highImpactDeals.length,
-      price_gaps_found: underpriced.length,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -302,18 +297,30 @@ function parseDealsFromSearchResult(result: any): any[] {
     }
   }
   
-  if (foundDiscounts.length === 0 && !fullText.toLowerCase().includes('sale')) {
+  // An anti-bot or error page is not a deal. AJIO serves Akamai error pages to
+  // scrapers, and their titles ("Reference #18.8df6d517...") were being stored as
+  // deal names with the leading 18 read as an 18% discount. Those rows then fed
+  // the "high-impact deals detected" alert.
+  const looksLikeErrorPage = /reference\s*#|errors\.edgesuite|access denied|forbidden|not found|captcha|are you a robot/i
+    .test(`${title} ${url} ${description}`);
+  if (looksLikeErrorPage) {
     return deals;
   }
-  
+
+  // A deal needs an actual discount figure. The word "sale" alone used to be
+  // enough, and the discount was then invented as a flat 30%.
+  if (foundDiscounts.length === 0) {
+    return deals;
+  }
+
   const category = detectCategory(url, fullText);
-  const maxDiscount = foundDiscounts.length > 0 ? Math.max(...foundDiscounts) : 30;
+  const maxDiscount = Math.max(...foundDiscounts);
   const isFlashSale = /flash|limited|hour|today|ending|hurry/i.test(fullText);
   const dealType = maxDiscount >= 60 ? 'mega_sale' : maxDiscount >= 40 ? 'seasonal_sale' : 'regular_discount';
   const impact = maxDiscount >= 60 ? 'critical' : maxDiscount >= 40 ? 'high' : 'medium';
-  
+
   const dealName = title.length > 10 ? title.substring(0, 150) : `AJIO ${maxDiscount}% ${category} Sale`;
-  
+
   deals.push({
     name: dealName,
     discount: foundDiscounts.length > 1 ? `${Math.min(...foundDiscounts)}-${maxDiscount}% Off` : `${maxDiscount}% Off`,
@@ -322,68 +329,96 @@ function parseDealsFromSearchResult(result: any): any[] {
     impact: impact,
     isFlashSale: isFlashSale,
     endDate: null,
-    conversionImpact: isFlashSale ? maxDiscount * 0.3 : maxDiscount * 0.2,
+    // Was maxDiscount * 0.3 or * 0.2 — a conversion lift nobody measured, stored
+    // as though it had been.
+    conversionImpact: null,
     sourceUrl: url,
   });
-  
+
   return deals;
 }
 
+/** Page furniture that appears in search-result markdown but is never a product. */
+const MARKUP_LINE = /^(!\[|\||•|[-*#>]\s|\(|https?:|Reference\s*#)/i;
+
+/** Promotional and legal copy that carries a price but describes no product. */
+const PROMO_COPY = /(coupon|cart value|t&c|terms and conditions|offer icon|reward|voucher|minimum|additional\s|extra\s|use\s+code|apply\s+code|net order value|edgesuite|access denied|reference\s*#|participating in|capped at|purchase over|flat\s+\d*%)/i;
+
+/**
+ * Pull products out of scraped page markdown.
+ *
+ * This used to treat any line containing a rupee figure between 200 and 30000
+ * as a product, which is how banner captions, coupon terms and two Akamai error
+ * pages ended up in competitor_products with prices attached. It also built the
+ * name with `line.replace(/[₹Rs.\d,\s]+/g, ' ')` — a character class, so it
+ * deleted every R, s and digit anywhere in the text and stored "Customer" as
+ * "Cu tomer".
+ *
+ * A line now has to name a brand we recognise before it counts. That is the only
+ * reliable product signal in search-result markdown, and requiring it means we
+ * return nothing rather than guessing.
+ */
 function parseProductsFromContent(content: string, url: string, defaultCategory?: string): any[] {
   const products: any[] = [];
   const lines = content.split('\n');
-  
+
   const pricePattern = /(?:₹|Rs\.?|INR)\s*([\d,]+)/gi;
-  
+
   const knownBrands = [
     'Puma', 'Nike', 'Adidas', 'Levis', 'Wrangler', 'Allen Solly', 'Van Heusen',
-    'Peter England', 'Louis Philippe', 'Jack & Jones', 'Only', 'Vero Moda',
-    'BIBA', 'W', 'Aurelia', 'Global Desi', 'AND', 'Reebok', 'Asics', 'Skechers'
+    'Peter England', 'Louis Philippe', 'Jack & Jones', 'Vero Moda',
+    'BIBA', 'Aurelia', 'Global Desi', 'Reebok', 'Asics', 'Skechers'
   ];
-  
+
   const category = defaultCategory || detectCategory(url, content);
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.length < 5) continue;
-    
+  const sourceUrl = /^https?:\/\//i.test(url) ? url : null;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.length < 8 || line.length > 300) continue;
+    if (MARKUP_LINE.test(line) || PROMO_COPY.test(line)) continue;
+
     const priceMatches = [...line.matchAll(pricePattern)];
     if (priceMatches.length === 0) continue;
-    
+
     const prices = priceMatches
-      .map(m => parseInt(m[1].replace(/,/g, '')))
-      .filter(p => p > 200 && p < 30000);
-    
+      .map((m) => parseInt(m[1].replace(/,/g, ''), 10))
+      .filter((p) => p > 200 && p < 30000);
     if (prices.length === 0) continue;
-    
-    const sortedPrices = [...prices].sort((a, b) => a - b);
-    const currentPrice = sortedPrices[0];
-    const originalPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1] : Math.round(currentPrice * 1.35);
-    
-    let brand = 'Unknown';
-    for (const b of knownBrands) {
-      if (line.toLowerCase().includes(b.toLowerCase())) {
-        brand = b;
-        break;
-      }
-    }
-    
-    const productName = line.substring(0, 100).replace(/[₹Rs.\d,\s]+/g, ' ').trim() || `${brand} ${category}`;
-    if (productName.length < 5) continue;
-    
-    const discount = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
-    
+
+    const brand = knownBrands.find((b) =>
+      new RegExp(`\\b${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(line)
+    );
+    if (!brand) continue;
+
+    // Remove only the matched price substrings, leaving the rest of the words intact.
+    let name = line;
+    for (const m of priceMatches) name = name.replace(m[0], ' ');
+    name = name.replace(/[*_`[\]()]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+    const words = name.split(/\s+/).filter((w) => /[a-z]{2,}/i.test(w));
+    if (words.length < 2 || name.length < 8) continue;
+
+    const sorted = [...prices].sort((a, b) => a - b);
+    const currentPrice = sorted[0];
+    // Only a genuine second price on the line is an original price. The old code
+    // invented one as currentPrice * 1.35, manufacturing a discount nobody observed.
+    const originalPrice = sorted.length > 1 ? sorted[sorted.length - 1] : null;
+    const discount = originalPrice
+      ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+      : null;
+
     products.push({
-      name: productName,
-      category: category,
+      name: name.slice(0, 120),
+      category,
       price: currentPrice,
-      originalPrice: originalPrice,
-      discount: Math.min(discount, 85),
-      brand: brand,
-      url: url,
+      originalPrice,
+      discount,
+      brand,
+      url: sourceUrl,
     });
   }
-  
+
   return products.slice(0, 10);
 }
 
@@ -429,28 +464,6 @@ function deduplicateByKey(items: any[], key: string): any[] {
   });
 }
 
-function estimateMyntraPrice(ajioPrice: number, category: string): number {
-  const categoryMultipliers: Record<string, number> = {
-    'Women': 1.08,
-    'Women Tops': 1.08,
-    'Dresses': 1.10,
-    'Tops': 1.07,
-    'Ethnic Wear': 1.05,
-    'Jeans': 1.06,
-    'Men': 1.06,
-    'Men Shirts': 1.06,
-    'Shirts': 1.06,
-    'Sneakers': 1.04,
-    'Footwear': 1.05,
-    'Sportswear': 1.03,
-    'Winterwear': 1.07,
-    'Kids': 1.06,
-    'Accessories': 1.08,
-    'Fashion': 1.06,
-  };
-  
-  const multiplier = categoryMultipliers[category] || 1.06;
-  const variance = 0.96 + Math.random() * 0.08;
-  
-  return Math.round(ajioPrice * multiplier * variance);
-}
+// estimateMyntraPrice() deleted. It returned ajioPrice * categoryMultiplier *
+// (0.96 + Math.random() * 0.08) and was presented as Myntra's real price.
+

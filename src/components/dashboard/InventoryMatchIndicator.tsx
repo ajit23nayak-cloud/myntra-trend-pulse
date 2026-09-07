@@ -41,14 +41,21 @@ export function InventoryMatchIndicator() {
         </TooltipProvider>
       </div>
       
-      {emergingTrends.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          No emerging trends to analyze
+      {emergingTrends.filter((t) => typeof t.myntra_inventory_match === 'number').length === 0 ? (
+        <div className="text-center py-8">
+          <p className="font-medium text-foreground mb-1">Inventory match not available</p>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            Nothing in the pipeline reads Myntra's catalogue, so there is no match to
+            report. This panel previously filled the gap with a random number.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {emergingTrends.slice(0, 6).map((trend) => {
-            const match = trend.myntra_inventory_match || Math.random() * 100;
+          {emergingTrends
+            .filter((t) => typeof t.myntra_inventory_match === 'number')
+            .slice(0, 6)
+            .map((trend) => {
+            const match = trend.myntra_inventory_match as number;
             const status = getMatchStatus(match);
             const Icon = status.icon;
 

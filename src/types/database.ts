@@ -213,15 +213,26 @@ export interface ScrapeLog {
 }
 
 // Dashboard stats computed from database
+/**
+ * Headline dashboard figures.
+ *
+ * The nullable fields are the ones that cannot always be computed. They were
+ * previously typed as plain numbers and backed by constants (72, 78, 2.3, 5,
+ * -1.2, 3), so a missing measurement was indistinguishable from a real one.
+ * Null means "not measured"; render it as a dash, not a zero.
+ *
+ * Note that `strictNullChecks` is off in this project, so these annotations are
+ * documentation rather than something the compiler enforces.
+ */
 export interface DashboardStats {
-  overallSentiment: number;
-  sentimentChange: number;
+  overallSentiment: number | null;
+  sentimentChange: number | null;
   activeTrends: number;
-  trendsChange: number;
-  priceCompetitiveness: number;
-  priceChange: number;
+  trendsChange: number | null;
+  priceCompetitiveness: number | null;
+  priceChange: number | null;
   activeAlerts: number;
-  alertsChange: number;
+  alertsChange: number | null;
 }
 
 // Timeframe options for filtering

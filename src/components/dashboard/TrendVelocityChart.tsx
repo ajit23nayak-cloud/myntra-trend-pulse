@@ -19,13 +19,18 @@ export function TrendVelocityChart() {
     return <div className="animate-pulse h-64 bg-muted rounded-lg" />;
   }
 
-  // Generate velocity data for visualization
-  const velocityData = trends?.slice(0, 8).map((trend, index) => ({
-    name: trend.trend_name.split(' ').slice(0, 2).join(' '),
-    velocity: trend.velocity_score || Math.random() * 100,
-    growth: trend.growth_rate || Math.random() * 50,
-    lifespan: trend.predicted_lifespan_weeks || Math.floor(Math.random() * 12) + 4
-  })) || [];
+  // Only trends that carry a real velocity score are plotted. Missing values used
+  // to be filled with Math.random(), so the chart drew bars for trends that had
+  // never been measured.
+  const velocityData = (trends ?? [])
+    .filter((trend) => typeof trend.velocity_score === 'number')
+    .slice(0, 8)
+    .map((trend) => ({
+      name: trend.trend_name.split(' ').slice(0, 2).join(' '),
+      velocity: trend.velocity_score as number,
+      growth: trend.growth_rate ?? 0,
+      lifespan: trend.predicted_lifespan_weeks ?? 0
+    }));
 
   return (
     <div className="space-y-4">

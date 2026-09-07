@@ -3,7 +3,9 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-const timeframes = ['This Week', 'Last Week', '2 Weeks Ago', '3 Weeks Ago'];
+// One column, because one column is all that is measured. This was four weekly
+// columns built from a single average plus random noise per column.
+const timeframes = ['Current'];
 
 export function CompetitiveHeatmap() {
   const { data: products, isLoading } = useCompetitorProducts();
@@ -15,38 +17,51 @@ export function CompetitiveHeatmap() {
       acc[cat] = { 
         category: cat, 
         products: [], 
-        totalDiff: 0, 
+        totalDiff: 0,
         count: 0,
+        comparable: 0,
         myntraWins: 0,
         ajioWins: 0
       };
     }
     acc[cat].products.push(product);
-    acc[cat].totalDiff += product.price_difference || 0;
     acc[cat].count++;
-    if ((product.price_difference || 0) < 0) acc[cat].myntraWins++;
-    else if ((product.price_difference || 0) > 0) acc[cat].ajioWins++;
+    // Only rows with a real price_difference count towards the average. Treating a
+    // missing comparison as `|| 0` dragged every category's gap towards zero and
+    // made "evenly matched" the answer whenever the data was absent.
+    if (typeof product.price_difference === 'number') {
+      acc[cat].totalDiff += product.price_difference;
+      acc[cat].comparable++;
+      if (product.price_difference < 0) acc[cat].myntraWins++;
+      else if (product.price_difference > 0) acc[cat].ajioWins++;
+    }
     return acc;
   }, {}) || {};
 
-  const categories = Object.keys(categoryData);
+  // A price gap needs both prices. Myntra's side is not scraped, so most rows have
+  // no comparison and are excluded rather than counted as a zero gap.
+  const categories = Object.keys(categoryData).filter((c) => categoryData[c].comparable > 0);
 
-  // Generate heatmap data with simulated time variation
+  /**
+   * One column per week of price-gap history.
+   *
+   * The four columns used to be one average with `(Math.random() - 0.5) * 15`
+   * layered on top, scaled by column index — invented history, relabelled as
+   * "This Week" through "3 Weeks Ago", and different on every render. Real weekly
+   * figures would come from the price_history table, which this component has
+   * never read, so until it does there is only one honest column: now.
+   */
   const heatmapData = categories.map((category) => {
     const catData = categoryData[category];
-    const baseAvgDiff = catData.count > 0 ? catData.totalDiff / catData.count : 0;
-    
-    // Simulate historical variation (would come from price_history in production)
+    const avgDiff = catData.totalDiff / catData.comparable;
+
     return {
       category,
       productCount: catData.count,
+      comparable: catData.comparable,
       myntraWins: catData.myntraWins,
       ajioWins: catData.ajioWins,
-      values: timeframes.map((_, i) => {
-        // Add some variation based on index (simulating time-based changes)
-        const variation = (Math.random() - 0.5) * 15;
-        return Math.min(Math.max(baseAvgDiff + variation * (i + 1) * 0.3, -500), 500);
-      })
+      values: [avgDiff],
     };
   });
 
@@ -66,8 +81,12 @@ export function CompetitiveHeatmap() {
 
   if (categories.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
-        <p>No product data available for heatmap</p>
+      <div className="text-center py-8">
+        <p className="font-medium text-foreground mb-1">No price comparison available</p>
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          A price gap needs a Myntra price and an AJIO price for the same product.
+          Only AJIO is scraped, so there is nothing to compare against yet.
+        </p>
       </div>
     );
   }

@@ -56,8 +56,10 @@ export function TrendLifecycleForecast() {
           predictedGrowth = baseGrowth * (1 - weekInCycle / lifespan * 0.4);
         }
         
-        // Add some variance
-        predictedGrowth = Math.max(0, predictedGrowth + (Math.random() - 0.5) * 10);
+        // No jitter. This added (Math.random() - 0.5) * 10 to every point, so the
+        // curve moved on each render and looked like measurement noise from data
+        // that does not exist. The projection is a formula; it should draw as one.
+        predictedGrowth = Math.max(0, predictedGrowth);
         weekData[trend.trend_name] = Math.round(predictedGrowth);
       });
       

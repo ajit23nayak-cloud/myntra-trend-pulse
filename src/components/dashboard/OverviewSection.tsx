@@ -111,15 +111,18 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
   
   // Calculate price competitiveness from real competitor data
   const priceCompetitiveness = useMemo(() => {
+    // Null means "not measured", and the card renders a dash. Both of these
+    // branches used to return a fixed { score: 87, avgGap: -2.3 }, so the tile
+    // read "87%" with no competitor data behind it at all.
     if (!competitorProducts || competitorProducts.length === 0) {
-      return { score: 87, avgGap: -2.3 };
+      return null;
     }
-    
+
     const productsWithPriceDiff = competitorProducts.filter(p => p.price_difference !== null);
     if (productsWithPriceDiff.length === 0) {
-      return { score: 87, avgGap: -2.3 };
+      return null;
     }
-    
+
     const avgPriceDiff = productsWithPriceDiff.reduce((sum, p) => sum + (p.price_difference || 0), 0) / productsWithPriceDiff.length;
     const myntraWins = productsWithPriceDiff.filter(p => (p.price_difference || 0) < 0).length;
     const score = Math.round((myntraWins / productsWithPriceDiff.length) * 100);
@@ -217,9 +220,9 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
         <div className="relative">
           <StatCard
             title="Price Competitiveness"
-            value={`${priceCompetitiveness.score}%`}
-            change={priceCompetitiveness.avgGap}
-            changeLabel="avg price gap"
+            value={priceCompetitiveness ? `${priceCompetitiveness.score}%` : '—'}
+            change={priceCompetitiveness?.avgGap}
+            changeLabel={priceCompetitiveness ? 'avg price gap' : 'no Myntra price to compare'}
             changeLabelTooltip={changeLabelTooltips.avgPriceGap}
             icon={Target}
             iconColor="text-blue"

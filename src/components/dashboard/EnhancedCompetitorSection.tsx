@@ -40,8 +40,10 @@ export function EnhancedCompetitorSection() {
         category: cat,
         productCount: 0,
         totalMyntraPrice: 0,
+        myntraPriced: 0,
         totalAjioPrice: 0,
         totalDiff: 0,
+        comparable: 0,
         myntraWins: 0,
         ajioWins: 0,
         avgMyntraDiscount: 0,
@@ -49,21 +51,32 @@ export function EnhancedCompetitorSection() {
       };
     }
     acc[cat].productCount++;
-    acc[cat].totalMyntraPrice += product.myntra_equivalent_price || 0;
+    if (typeof product.myntra_equivalent_price === 'number') {
+      acc[cat].totalMyntraPrice += product.myntra_equivalent_price;
+      acc[cat].myntraPriced++;
+    }
     acc[cat].totalAjioPrice += product.current_price || 0;
-    acc[cat].totalDiff += product.price_difference || 0;
-    if ((product.price_difference || 0) < 0) acc[cat].myntraWins++;
-    else if ((product.price_difference || 0) > 0) acc[cat].ajioWins++;
+    // A product with no Myntra price has no gap. Counting it as a zero gap made
+    // uncompared products vote for "evenly matched".
+    if (typeof product.price_difference === 'number') {
+      acc[cat].totalDiff += product.price_difference;
+      acc[cat].comparable++;
+      if (product.price_difference < 0) acc[cat].myntraWins++;
+      else if (product.price_difference > 0) acc[cat].ajioWins++;
+    }
     acc[cat].avgAjioDiscount += product.discount_percentage || 0;
     return acc;
   }, {});
 
+  // Averages divide by how many rows actually carried the figure, not by how many
+  // products exist. Dividing by productCount treated every uncompared product as a
+  // zero and pulled the averages towards nothing.
   const categoryData = Object.values(categoryStats).map((cat: any) => ({
     ...cat,
-    avgMyntraPrice: cat.productCount > 0 ? Math.round(cat.totalMyntraPrice / cat.productCount) : 0,
-    avgAjioPrice: cat.productCount > 0 ? Math.round(cat.totalAjioPrice / cat.productCount) : 0,
-    avgDiff: cat.productCount > 0 ? Math.round(cat.totalDiff / cat.productCount) : 0,
-    avgDiscount: cat.productCount > 0 ? Math.round(cat.avgAjioDiscount / cat.productCount) : 0
+    avgMyntraPrice: cat.myntraPriced > 0 ? Math.round(cat.totalMyntraPrice / cat.myntraPriced) : null,
+    avgAjioPrice: cat.productCount > 0 ? Math.round(cat.totalAjioPrice / cat.productCount) : null,
+    avgDiff: cat.comparable > 0 ? Math.round(cat.totalDiff / cat.comparable) : null,
+    avgDiscount: cat.productCount > 0 ? Math.round(cat.avgAjioDiscount / cat.productCount) : null
   }));
 
   return (
@@ -183,9 +196,14 @@ export function EnhancedCompetitorSection() {
               </TableHeader>
               <TableBody>
                 {categoryData.map((cat: any, i: number) => {
-                  const isPositive = cat.avgDiff > 0;
-                  const winner = cat.myntraWins > cat.ajioWins ? 'Myntra' : cat.ajioWins > cat.myntraWins ? 'AJIO' : 'Tie';
-                  
+                  // A category with nothing to compare shows a dash in the gap
+                  // column rather than a confident ₹0 and a "Tie" badge.
+                  const hasGap = cat.avgDiff !== null;
+                  const isPositive = hasGap && cat.avgDiff > 0;
+                  const winner = !hasGap ? null
+                    : cat.myntraWins > cat.ajioWins ? 'Myntra'
+                    : cat.ajioWins > cat.myntraWins ? 'AJIO' : 'Tie';
+
                   return (
                     <TableRow key={i}>
                       <TableCell className="font-medium">{cat.category}</TableCell>
@@ -194,23 +212,35 @@ export function EnhancedCompetitorSection() {
                           {cat.productCount} SKUs
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">₹{cat.avgMyntraPrice}</TableCell>
-                      <TableCell className="text-right">₹{cat.avgAjioPrice}</TableCell>
-                      <TableCell className={cn("text-right font-medium", isPositive ? "text-destructive" : "text-teal")}>
-                        {isPositive ? <TrendingUp className="inline w-3 h-3 mr-1" /> : <TrendingDown className="inline w-3 h-3 mr-1" />}
-                        {isPositive ? '+' : ''}₹{Math.abs(cat.avgDiff)}
+                      <TableCell className="text-right text-muted-foreground">
+                        {cat.avgMyntraPrice === null ? '—' : `₹${cat.avgMyntraPrice}`}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {cat.avgAjioPrice === null ? '—' : `₹${cat.avgAjioPrice}`}
+                      </TableCell>
+                      <TableCell className={cn("text-right font-medium", !hasGap ? "text-muted-foreground" : isPositive ? "text-destructive" : "text-teal")}>
+                        {!hasGap ? '—' : (
+                          <>
+                            {isPositive ? <TrendingUp className="inline w-3 h-3 mr-1" /> : <TrendingDown className="inline w-3 h-3 mr-1" />}
+                            {isPositive ? '+' : ''}₹{Math.abs(cat.avgDiff)}
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge 
-                          variant="outline" 
-                          className={cn(
-                            "text-xs",
-                            winner === 'Myntra' ? "bg-teal/20 text-teal" : 
-                            winner === 'AJIO' ? "bg-coral/20 text-coral" : ""
-                          )}
-                        >
-                          {winner} ({winner === 'Myntra' ? cat.myntraWins : winner === 'AJIO' ? cat.ajioWins : '-'})
-                        </Badge>
+                        {winner === null ? (
+                          <span className="text-xs text-muted-foreground">not compared</span>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs",
+                              winner === 'Myntra' ? "bg-teal/20 text-teal" :
+                              winner === 'AJIO' ? "bg-coral/20 text-coral" : ""
+                            )}
+                          >
+                            {winner} ({winner === 'Myntra' ? cat.myntraWins : winner === 'AJIO' ? cat.ajioWins : '-'})
+                          </Badge>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

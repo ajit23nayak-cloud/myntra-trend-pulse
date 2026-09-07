@@ -162,9 +162,14 @@ Generate 5-8 diverse, actionable insights. Return ONLY valid JSON, no markdown.`
         .insert({
           trend_id: trend.id,
           forecast_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          // This projection is a fixed rule, not a model: emerging trends are
+          // assumed to grow 20% and peaking ones to fall 30%, thirty days out.
           predicted_status: trend.status === 'emerging' ? 'established' : 'cooling',
           predicted_growth: trend.growth_rate * (trend.status === 'emerging' ? 1.2 : 0.7),
-          confidence_score: 0.7 + Math.random() * 0.2,
+          // No confidence is computed, so none is stored. This was
+          // 0.7 + Math.random() * 0.2, which put a random 70-90% next to every
+          // forecast and read as if something had been measured.
+          confidence_score: null,
           recommendation: trend.status === 'emerging' 
             ? `Increase inventory for ${trend.trend_name} related products`
             : `Consider promotional pricing for ${trend.trend_name} items`,

@@ -298,22 +298,27 @@ export function useDashboardStats(): { data: DashboardStats | undefined; isLoadi
   const totalReviews = latestSentiment 
     ? latestSentiment.positive_count + latestSentiment.negative_count + latestSentiment.neutral_count 
     : 0;
-  const positiveRatio = totalReviews > 0 
-    ? (latestSentiment!.positive_count / totalReviews) * 100 
-    : 72;
+  // No reviews means no sentiment figure. This used to fall back to 72.
+  const positiveRatio = totalReviews > 0
+    ? (latestSentiment!.positive_count / totalReviews) * 100
+    : null;
 
   const latestMetric = competitiveMetrics?.[0];
-  
+
   return {
     data: {
-      overallSentiment: Math.round(positiveRatio),
-      sentimentChange: 2.3,
+      overallSentiment: positiveRatio === null ? null : Math.round(positiveRatio),
+      // The four "change" figures were the constants 2.3, 5, -1.2 and 3, printed
+      // as period-over-period movement on every render regardless of the data.
+      // Computing them needs a stored previous period, which no table holds yet.
+      sentimentChange: null,
       activeTrends: fashionTrends?.filter(t => t.status === 'emerging' || t.status === 'peaking').length || 0,
-      trendsChange: 5,
-      priceCompetitiveness: latestMetric?.price_competitiveness_score || 78,
-      priceChange: -1.2,
+      trendsChange: null,
+      // Was `|| 78`, so a missing metric read as a healthy score.
+      priceCompetitiveness: latestMetric?.price_competitiveness_score ?? null,
+      priceChange: null,
       activeAlerts: alerts?.length || 0,
-      alertsChange: 3
+      alertsChange: null
     },
     isLoading: false
   };

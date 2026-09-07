@@ -21,14 +21,19 @@ export function RegionalTrendMap() {
   // Get regional popularity for top trends
   const getRegionalData = () => {
     return regions.map((region) => {
-      const trendingItems = trends?.slice(0, 5).map((trend) => {
-        const popularity = trend.regional_popularity?.[region.id] || Math.random() * 100;
-        return {
+      // Only trends that actually carry regional data appear. A missing figure used
+      // to become Math.random() * 100, so this map drew confident regional splits
+      // for trends nobody had regional data on.
+      const trendingItems = (trends ?? [])
+        .filter((trend) => typeof trend.regional_popularity?.[region.id] === 'number')
+        .slice(0, 5)
+        .map((trend) => ({
           name: trend.trend_name,
-          popularity,
+          popularity: trend.regional_popularity![region.id] as number,
           status: trend.status
-        };
-      }).sort((a, b) => b.popularity - a.popularity).slice(0, 3) || [];
+        }))
+        .sort((a, b) => b.popularity - a.popularity)
+        .slice(0, 3);
 
       return {
         ...region,

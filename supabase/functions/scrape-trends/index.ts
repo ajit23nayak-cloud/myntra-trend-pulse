@@ -114,6 +114,37 @@ serve(async (req) => {
 
     console.log(`\nScraped ${successfulSources}/${trendSources.length} sources, ${scrapedImages.length} images collected`);
 
+    // Same guard as the review scraper: with no scraped text there is nothing to
+    // extract from, and asking the model anyway just gets a confident invention.
+    if (allTrendContent.trim().length < 200) {
+      console.error('No usable trend content scraped. Storing nothing.');
+
+      await supabase.from('scrape_logs').insert({
+        source: 'Multi-Platform Fashion Trends',
+        scrape_type: 'trends',
+        status: 'failed',
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        records_processed: 0,
+        errors: {
+          sources_attempted: trendSources.length,
+          sources_succeeded: successfulSources,
+          note: 'No source returned usable content, so no trends were written.',
+        },
+      });
+
+      return new Response(JSON.stringify({
+        success: false,
+        reason: 'no_content_scraped',
+        sources_attempted: trendSources.length,
+        sources_succeeded: successfulSources,
+        trends_stored: 0,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Use Lovable AI to analyze trends
     console.log('Analyzing trends with AI...');
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -220,8 +251,14 @@ Guidelines:
           predicted_lifespan_weeks: trend.predicted_lifespan_weeks || 12,
           keywords: trend.keywords || [],
           hashtags: trend.hashtags || [],
-          regional_popularity: trend.regional_popularity || { metro: 70, tier_1: 50, tier_2: 30, tier_3: 20 },
-          myntra_inventory_match: Math.floor(Math.random() * 50) + 30,
+          // Both of these were manufactured. regional_popularity fell back to a
+          // fixed {70, 50, 30, 20}, so the regional map drew the same shape for
+          // every trend that lacked data. myntra_inventory_match was
+          // Math.floor(Math.random() * 50) + 30 — a dice roll between 30 and 80
+          // presented as how well Myntra's stock matched the trend. Nothing in
+          // this pipeline reads Myntra's catalogue, so it cannot be known here.
+          regional_popularity: trend.regional_popularity ?? null,
+          myntra_inventory_match: null,
           image_url: imageUrl,
           first_detected: new Date().toISOString().split('T')[0],
           last_updated: new Date().toISOString(),
@@ -262,14 +299,20 @@ Guidelines:
       });
     }
 
-    // Log scrape activity
+    // A run that extracted nothing is a failed run, whatever the HTTP status was.
     await supabase.from('scrape_logs').insert({
       source: 'Multi-Platform Fashion Trends',
       scrape_type: 'trends',
-      status: 'completed',
+      status: storedCount > 0 ? 'completed' : 'failed',
       started_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
-      records_processed: trends.length,
+      records_processed: storedCount,
+      errors: storedCount > 0 && successfulSources === trendSources.length ? null : {
+        sources_attempted: trendSources.length,
+        sources_succeeded: successfulSources,
+        trends_extracted: trends.length,
+        trends_stored: storedCount,
+      },
     });
 
     const platformBreakdown: Record<string, number> = {};
