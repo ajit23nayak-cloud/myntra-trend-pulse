@@ -11,7 +11,16 @@ import {
 interface StatCardProps {
   title: string;
   value: string | number;
-  change?: number;
+  /** Null means the figure could not be computed; the badge is then hidden. */
+  change?: number | null;
+  /**
+   * Unit for `change`. Defaults to '%'.
+   *
+   * The suffix used to be hardcoded, so a card passing a plain count rendered it
+   * as a percentage: 94 trends trending up showed as "+94%", and 22 critical
+   * alerts as "+22%", both reading as period-over-period growth.
+   */
+  changeUnit?: string;
   changeLabel?: string;
   changeLabelTooltip?: string;
   icon: LucideIcon;
@@ -19,18 +28,20 @@ interface StatCardProps {
   delay?: number;
 }
 
-export function StatCard({ 
-  title, 
-  value, 
-  change, 
+export function StatCard({
+  title,
+  value,
+  change,
+  changeUnit = '%',
   changeLabel,
   changeLabelTooltip,
   icon: Icon,
   iconColor = 'text-primary',
-  delay = 0 
+  delay = 0
 }: StatCardProps) {
-  const isPositive = change && change > 0;
-  const isNegative = change && change < 0;
+  const hasChange = change !== undefined && change !== null;
+  const isPositive = hasChange && change > 0;
+  const isNegative = hasChange && change < 0;
   
   return (
     <div 
@@ -46,7 +57,7 @@ export function StatCard({
             <Icon className={cn("w-6 h-6", iconColor)} />
           </div>
           
-          {change !== undefined && (
+          {hasChange && (
             <div className={cn(
               "flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-lg",
               isPositive && "bg-teal/20 text-teal",
@@ -56,7 +67,7 @@ export function StatCard({
               {isPositive && <TrendingUp className="w-4 h-4" />}
               {isNegative && <TrendingDown className="w-4 h-4" />}
               {!isPositive && !isNegative && <Minus className="w-4 h-4" />}
-              <span>{isPositive && '+'}{change}%</span>
+              <span>{isPositive && '+'}{change}{changeUnit}</span>
             </div>
           )}
         </div>

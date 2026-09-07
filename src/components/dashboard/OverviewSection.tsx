@@ -74,16 +74,18 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
   // Calculate real sentiment stats from database
   const sentimentStats = useMemo(() => {
     if (!reviews || reviews.length === 0) {
-      return { 
-        overallScore: 72, 
-        change: 2.5, 
-        positive: 0, 
-        negative: 0, 
+      // No reviews, no score. This returned a fixed 72% and a 2.5% rise, so an
+      // empty database still produced a healthy-looking sentiment tile.
+      return {
+        overallScore: null as number | null,
+        change: null as number | null,
+        positive: 0,
+        negative: 0,
         neutral: 0,
         total: 0
       };
     }
-    
+
     const positive = reviews.filter(r => r.sentiment === 'positive').length;
     const negative = reviews.filter(r => r.sentiment === 'negative').length;
     const neutral = reviews.filter(r => r.sentiment === 'neutral').length;
@@ -91,21 +93,36 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
     
     const overallScore = total > 0 ? Math.round((positive / total) * 100) : 0;
     
-    // Calculate change from older reviews vs recent
-    const midpoint = Math.floor(reviews.length / 2);
-    const recentReviews = reviews.slice(0, midpoint);
-    const olderReviews = reviews.slice(midpoint);
-    
-    const recentPositiveRate = recentReviews.length > 0 
-      ? (recentReviews.filter(r => r.sentiment === 'positive').length / recentReviews.length) * 100 
-      : 0;
-    const olderPositiveRate = olderReviews.length > 0 
-      ? (olderReviews.filter(r => r.sentiment === 'positive').length / olderReviews.length) * 100 
-      : 0;
-    
-    const change = recentPositiveRate - olderPositiveRate;
-    
-    return { overallScore, change: Math.round(change * 10) / 10, positive, negative, neutral, total };
+    /**
+     * Week-on-week change in the positive share.
+     *
+     * This used to split the array down the middle and compare the two halves,
+     * then label the result "vs last week". Half an array is not a week, and now
+     * that undated reviews are stored as null the ordering carries no time
+     * information at all. Only reviews with a real date count, and if there are
+     * too few in either window the answer is null rather than a number.
+     */
+    const now = Date.now();
+    const WEEK = 7 * 24 * 60 * 60 * 1000;
+    const dated = reviews.filter((r) => r.review_date);
+
+    const inWindow = (from: number, to: number) =>
+      dated.filter((r) => {
+        const t = new Date(r.review_date!).getTime();
+        return t >= from && t < to;
+      });
+
+    const thisWeek = inWindow(now - WEEK, now);
+    const lastWeek = inWindow(now - 2 * WEEK, now - WEEK);
+
+    const positiveShare = (rows: typeof dated) =>
+      (rows.filter((r) => r.sentiment === 'positive').length / rows.length) * 100;
+
+    const change = thisWeek.length >= 5 && lastWeek.length >= 5
+      ? Math.round((positiveShare(thisWeek) - positiveShare(lastWeek)) * 10) / 10
+      : null;
+
+    return { overallScore, change, positive, negative, neutral, total };
   }, [reviews]);
   
   
@@ -190,9 +207,9 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
         <div className="relative">
           <StatCard
             title="Overall Sentiment"
-            value={`${sentimentStats.overallScore}%`}
+            value={sentimentStats.overallScore === null ? '—' : `${sentimentStats.overallScore}%`}
             change={sentimentStats.change}
-            changeLabel="vs last week"
+            changeLabel={sentimentStats.change === null ? 'not enough dated reviews to compare' : 'vs last week'}
             changeLabelTooltip={changeLabelTooltips.vsLastWeek}
             icon={MessageSquareText}
             iconColor="text-teal"
@@ -207,6 +224,7 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
             title="Active Trends"
             value={activeTrendsCount}
             change={trendingUpCount}
+            changeUnit=""
             changeLabel="trending up"
             changeLabelTooltip={changeLabelTooltips.trendingUp}
             icon={TrendingUp}
@@ -237,6 +255,7 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
             title="Alerts Today"
             value={alertStats.today}
             change={alertStats.critical}
+            changeUnit=""
             changeLabel="critical alerts"
             changeLabelTooltip={changeLabelTooltips.criticalAlerts}
             icon={Bell}
