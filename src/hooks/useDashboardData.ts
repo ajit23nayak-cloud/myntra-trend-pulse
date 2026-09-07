@@ -237,10 +237,18 @@ export function useUpdateAlertStatus() {
   
   return useMutation({
     mutationFn: async ({ alertId, status }: { alertId: string; status: AlertStatus }) => {
-      const updates: Record<string, unknown> = { status };
+      // Typed explicitly rather than as Record<string, unknown>. Supabase's
+      // generated Update type rejects an open index signature, which is what has
+      // been failing Lovable's build on every push. It slips past `npm run build`
+      // here because this project sets strict: false.
+      const updates: {
+        status: AlertStatus;
+        acknowledged_at?: string;
+        resolved_at?: string;
+      } = { status };
       if (status === 'acknowledged') updates.acknowledged_at = new Date().toISOString();
       if (status === 'resolved') updates.resolved_at = new Date().toISOString();
-      
+
       const { error } = await supabase
         .from('alerts')
         .update(updates)
