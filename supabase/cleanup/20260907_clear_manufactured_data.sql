@@ -6,6 +6,11 @@
 -- Everything here was produced by code that has now been fixed. Re-running the
 -- scrapers after this will repopulate the tables with rows that are either real
 -- or absent.
+--
+-- PREREQUISITE: run migration 20260907120000_allow_unknown_values.sql first.
+-- Several of these columns are NOT NULL, because the old code always invented a
+-- value rather than leaving one out. Without that migration this script fails on
+-- sentiment_reviews.review_date and the whole transaction rolls back.
 
 BEGIN;
 
