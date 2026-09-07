@@ -1,6 +1,8 @@
 # Myntra TrendPulse
 
-A fashion intelligence dashboard for a category team. It scrapes competitor pricing, app-store reviews and trend signals on a schedule, stores them in Postgres, and turns them into recommendations that carry an expected outcome and a place to mark whether it worked.
+A fashion intelligence dashboard for a category team. It scrapes competitor pricing, app-store reviews and trend signals every few hours, stores them in Postgres, and turns them into recommendations that carry an expected outcome and a place to mark whether it worked.
+
+Every number on screen comes from the database. Where a table is empty, the page says so rather than showing a stand-in.
 
 Built on Lovable, running on Supabase.
 
@@ -42,6 +44,29 @@ Five Supabase edge functions do the work.
 
 Every fetch goes through Firecrawl. Each run writes a row to `scrape_logs`, so you can see when a source last returned anything.
 
+### When they run
+
+`pg_cron` runs them inside Postgres, staggered so they do not collide on Firecrawl's rate limit. All times UTC.
+
+| Job | Schedule |
+|---|---|
+| `scrape-competitor-data` | every 6 hours, on the hour |
+| `scrape-reviews` | every 6 hours, 20 past |
+| `scrape-trends` | every 12 hours, 40 past |
+| `generate-insights` | 01:00, 07:00, 13:00, 19:00, after the scrapers |
+
+Refresh All on the Overview page triggers the same functions on demand. The header shows how old the newest completed run is, and turns amber past 24 hours.
+
+```sql
+-- what is scheduled
+select jobname, schedule, active from cron.job where jobname like 'trendpulse-%';
+
+-- recent runs and failures
+select j.jobname, r.status, r.return_message, r.start_time
+from cron.job_run_details r join cron.job j on j.jobid = r.jobid
+where j.jobname like 'trendpulse-%' order by r.start_time desc limit 20;
+```
+
 Scraping goes through Firecrawl. The AI layer runs through Lovable's gateway. Both keys live in Supabase edge-function secrets and are read at runtime, so neither is in this repository.
 
 Fourteen tables behind it, including `competitor_products`, `price_history`, `sentiment_reviews`, `trend_forecasts`, `insights` and `scrape_logs`. Five migrations, all in `supabase/migrations/`.
@@ -62,6 +87,21 @@ npm run dev
 ```
 
 `.env` holds only the Supabase project URL, project ID and the publishable anon key. Those are compiled into the browser bundle by design and are safe in the open. Every privileged key sits in Supabase edge-function secrets, set separately.
+
+## Who can write what
+
+Reads are public: this is a read-only dashboard over public retail data and it has no sign-in.
+
+Writes are not. The scrapers connect with the service-role key, which bypasses row level security. Anonymous visitors can update exactly two things, restricted by column grant rather than by policy alone:
+
+| Table | Columns a visitor may change |
+|---|---|
+| `alerts` | `status`, `acknowledged_at`, `resolved_at` |
+| `insights` | `is_actioned`, `actioned_at` |
+
+Everything else — inserts, deletes, and every other column — is service-role only.
+
+One gap remains by choice. The edge functions run with `verify_jwt = false`, so anyone who finds the repository can trigger a scrape and spend Firecrawl credits. Closing it means putting a login in front of the dashboard, because Refresh All calls the same endpoints from the browser and cannot hold a secret.
 
 ## A note on the data
 
