@@ -391,10 +391,32 @@ function parseProductsFromContent(content: string, url: string, defaultCategory?
     );
     if (!brand) continue;
 
-    // Remove only the matched price substrings, leaving the rest of the words intact.
-    let name = line;
-    for (const m of priceMatches) name = name.replace(m[0], ' ');
-    name = name.replace(/[*_`[\]()]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    // AJIO product links carry the product name in the slug and the id after /p/.
+    // Prefer them: the surrounding markdown is link syntax and promo wording, so
+    // building the name from the line text gave rows like
+    // "40% off https://www.ajio.com/nike-men-court-vision-low.../p/469811286 grey?".
+    const productLink = line.match(/https?:\/\/(?:www\.)?ajio\.com\/([a-z0-9-]+)\/p\/(\d+)/i);
+
+    let name: string;
+    let productUrl = sourceUrl;
+
+    if (productLink) {
+      name = productLink[1]
+        .split('-')
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+      productUrl = `https://www.ajio.com/${productLink[1]}/p/${productLink[2]}`;
+    } else {
+      // Remove only the matched price substrings, leaving the rest of the words intact.
+      name = line;
+      for (const m of priceMatches) name = name.replace(m[0], ' ');
+      name = name
+        .replace(/https?:\/\/\S+/g, ' ')
+        .replace(/[*_`[\]()]/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
 
     const words = name.split(/\s+/).filter((w) => /[a-z]{2,}/i.test(w));
     if (words.length < 2 || name.length < 8) continue;
@@ -415,7 +437,7 @@ function parseProductsFromContent(content: string, url: string, defaultCategory?
       originalPrice,
       discount,
       brand,
-      url: sourceUrl,
+      url: productUrl,
     });
   }
 
