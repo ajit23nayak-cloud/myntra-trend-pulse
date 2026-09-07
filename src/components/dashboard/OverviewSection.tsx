@@ -135,7 +135,10 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
     const criticalAlerts = alerts?.filter(a => a.severity === 'critical' && a.status === 'active') || [];
     
     return {
-      today: todayAlerts.length || alerts?.length || 0,
+      // Zero is a real answer. This used to fall back to the total alert count
+      // when nothing arrived today, so a quiet day showed every alert ever
+      // raised under the label "Alerts Today".
+      today: todayAlerts.length,
       critical: criticalAlerts.length
     };
   }, [alerts]);
