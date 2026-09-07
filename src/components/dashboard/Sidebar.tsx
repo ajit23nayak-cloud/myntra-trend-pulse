@@ -17,6 +17,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAlerts } from '@/hooks/useDashboardData';
 
 interface SidebarProps {
   activeSection: string;
@@ -38,6 +39,8 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { data: activeAlerts } = useAlerts('active');
+  const activeAlertCount = activeAlerts?.length ?? 0;
 
   const handleNavClick = (item: typeof navItems[0]) => {
     if (item.route === '/fashion-trends') {
@@ -106,9 +109,9 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
               {(!collapsed || isMobile) && (
                 <span className="font-medium animate-fade-in">{item.label}</span>
               )}
-              {item.id === 'alerts' && (!collapsed || isMobile) && (
+              {item.id === 'alerts' && activeAlertCount > 0 && (!collapsed || isMobile) && (
                 <span className="ml-auto bg-destructive text-destructive-foreground text-xs px-2 py-0.5 rounded-full">
-                  3
+                  {activeAlertCount}
                 </span>
               )}
             </button>

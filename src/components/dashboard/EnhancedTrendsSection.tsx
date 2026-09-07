@@ -11,7 +11,6 @@ import { useFashionTrends } from '@/hooks/useDashboardData';
 import { Badge } from '@/components/ui/badge';
 import { Zap, Target, TrendingUp, TrendingDown, MapPin, Package, LineChart, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { fashionTrends } from '@/data/mockData';
 import { Input } from '@/components/ui/input';
 import type { RegionType, TrendStatus } from '@/types/database';
 
@@ -30,7 +29,10 @@ export function EnhancedTrendsSection() {
   
   // Fetch trends - the hook doesn't support all filters, so we filter client-side
   const { data: trends, isLoading } = useFashionTrends(statusFilter);
-  const allTrends = trends?.length ? trends : fashionTrends;
+  // Only ever show what is actually in the database. This used to fall back to a
+  // fixture file when the query came back empty, which made a broken scraper look
+  // like a healthy dashboard.
+  const allTrends = trends ?? [];
 
   // Apply client-side filters
   const displayTrends = useMemo(() => {
@@ -203,13 +205,25 @@ export function EnhancedTrendsSection() {
               {displayTrends.length === 0 ? (
                 <Card className="p-8 text-center">
                   <Search className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <p className="text-muted-foreground">No trends match your filters</p>
-                  <button 
-                    onClick={clearFilters}
-                    className="mt-2 text-sm text-primary hover:underline"
-                  >
-                    Clear all filters
-                  </button>
+                  {allTrends.length === 0 ? (
+                    <>
+                      <p className="font-medium text-foreground mb-1">No trend data yet</p>
+                      <p className="text-sm text-muted-foreground">
+                        Trends appear here once the trend scraper has run. Use Refresh All on the
+                        Overview page to fetch them now.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-muted-foreground">No trends match your filters</p>
+                      <button
+                        onClick={clearFilters}
+                        className="mt-2 text-sm text-primary hover:underline"
+                      >
+                        Clear all filters
+                      </button>
+                    </>
+                  )}
                 </Card>
               ) : (
                 displayTrends.map((trend: any, i: number) => {

@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { AlertTriangle, Lightbulb, TrendingUp, Bell, CheckCircle, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-import { insights } from '@/data/mockData';
 
 const typeConfig = {
   urgent: { icon: AlertTriangle, color: 'text-destructive bg-destructive/10' },
@@ -28,7 +27,9 @@ export function EnhancedInsightsSection() {
   const { data: dbInsights } = useInsights();
   const markActioned = useMarkInsightActioned();
 
-  const displayInsights = dbInsights?.length ? dbInsights : insights;
+  // Real rows only. Falling back to fixtures here meant the outcome tracker could
+  // show a hit rate for recommendations that were never generated.
+  const displayInsights = dbInsights ?? [];
   const actionedCount = displayInsights.filter((i: any) => i.is_actioned || i.actioned).length;
 
   const handleAction = async (id: string) => {

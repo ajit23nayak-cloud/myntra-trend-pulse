@@ -1,4 +1,5 @@
 import { useFashionTrends, useSentimentReviews, useAlerts, useCompetitorProducts } from '@/hooks/useDashboardData';
+import { DataFreshness } from './DataFreshness';
 import { useSentimentChartData } from '@/hooks/useSentimentChartData';
 import { StatCard } from './StatCard';
 import { 
@@ -175,9 +176,7 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
           </div>
           <InfoTooltip description="Central hub for monitoring key performance indicators, sentiment trends, and fashion trend insights for Myntra." />
         </div>
-        <div className="text-sm text-muted-foreground">
-          Last updated: <span className="text-foreground font-medium">2 minutes ago</span>
-        </div>
+        <DataFreshness />
       </div>
 
       {/* Stats Grid - Now using real data */}

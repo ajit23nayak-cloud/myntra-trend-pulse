@@ -4,7 +4,7 @@ import type {
   SentimentReview, SentimentTrend, KeyPhraseTrend, 
   FashionTrend, TrendMetric, TrendForecast,
   CompetitorProduct, CompetitorDeal, CompetitiveMetric,
-  Insight, Alert, DashboardStats, TimeframeOption,
+  Insight, Alert, ScrapeLog, DashboardStats, TimeframeOption,
   SentimentTheme, CustomerCohort, RegionType, TrendStatus, InsightType, AlertStatus
 } from '@/types/database';
 
@@ -251,6 +251,32 @@ export function useUpdateAlertStatus() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
     }
+  });
+}
+
+/**
+ * When the scrapers last completed a run.
+ *
+ * The header used to print a fixed "2 minutes ago". This reads the newest
+ * completed row in scrape_logs so the age on screen is the real one, however
+ * old that turns out to be.
+ */
+export function useLastScrape() {
+  return useQuery({
+    queryKey: ['last-scrape'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('scrape_logs')
+        .select('*')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      return (data?.[0] ?? null) as ScrapeLog | null;
+    },
+    // The age is rendered as text, so refresh it on a slow tick to keep it honest.
+    refetchInterval: 60_000
   });
 }
 

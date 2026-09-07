@@ -13,7 +13,6 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { MessageSquare, TrendingUp, AlertTriangle, Activity, ExternalLink, BarChart3 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { TimeframeOption, CustomerCohort, RegionType, SentimentTheme } from '@/types/database';
-import { sentimentThemes, recentFeedback } from '@/data/mockData';
 
 const sourceIcons: Record<string, string> = {
   'Twitter': '𝕏',
@@ -56,7 +55,42 @@ export function EnhancedSentimentSection() {
     return reviews.filter(r => r.product_category?.toLowerCase().includes(category.toLowerCase()));
   }, [reviews, category]);
 
-  const feedbackData = filteredReviews?.length ? filteredReviews.slice(0, 10) : recentFeedback;
+  // Real reviews only, never the fixture list.
+  const feedbackData = filteredReviews.slice(0, 10);
+
+  /**
+   * Sentiment split per theme, counted from the reviews on screen.
+   *
+   * This chart used to render a fixed six-row fixture regardless of what was in
+   * the database, so it never moved and never reflected the active filters.
+   */
+  const themeData = useMemo(() => {
+    const labelByTheme = Object.fromEntries(
+      Object.entries(themeMap).map(([label, key]) => [key, label])
+    ) as Record<string, string>;
+
+    const buckets = new Map<string, { theme: string; positive: number; negative: number; mentions: number }>();
+
+    for (const review of filteredReviews) {
+      const label = review.theme ? labelByTheme[review.theme] : undefined;
+      if (!label) continue;
+
+      const bucket = buckets.get(label) ?? { theme: label, positive: 0, negative: 0, mentions: 0 };
+      bucket.mentions += 1;
+      if (review.sentiment === 'positive') bucket.positive += 1;
+      else if (review.sentiment === 'negative') bucket.negative += 1;
+      buckets.set(label, bucket);
+    }
+
+    // Shown as a share of that theme's mentions, so themes stay comparable.
+    return Array.from(buckets.values())
+      .map((b) => ({
+        ...b,
+        positive: Math.round((b.positive / b.mentions) * 100),
+        negative: Math.round((b.negative / b.mentions) * 100),
+      }))
+      .sort((a, b) => b.mentions - a.mentions);
+  }, [filteredReviews]);
 
   const handleThemeClick = (themeLabel: string) => {
     const theme = themeMap[themeLabel] || null;
@@ -205,8 +239,16 @@ export function EnhancedSentimentSection() {
               </Badge>
             </div>
             <div className="h-64">
+              {themeData.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center">
+                  <p className="font-medium text-foreground mb-1">No themed reviews yet</p>
+                  <p className="text-sm text-muted-foreground max-w-sm">
+                    Reviews are grouped by theme once the review scraper has tagged them.
+                  </p>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={sentimentThemes} layout="vertical">
+                <BarChart data={themeData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                   <YAxis 
@@ -236,6 +278,7 @@ export function EnhancedSentimentSection() {
                   />
                 </BarChart>
               </ResponsiveContainer>
+              )}
             </div>
             <p className="text-xs text-muted-foreground text-center mt-2">
               Click on any theme bar to see sample reviews

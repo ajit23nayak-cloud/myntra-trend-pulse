@@ -10,7 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DollarSign, Zap, TrendingDown, TrendingUp, BarChart3, LineChart, Package, CheckCircle2, XCircle, Percent } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { competitorPricing, competitorDeals } from '@/data/mockData';
 
 const impactColors = {
   critical: 'bg-destructive/20 text-destructive',
@@ -23,8 +22,10 @@ export function EnhancedCompetitorSection() {
   const { data: products } = useCompetitorProducts();
   const { data: deals } = useCompetitorDeals(true);
 
-  const displayProducts = products?.length ? products : competitorPricing;
-  const displayDeals = deals?.length ? deals : competitorDeals;
+  // Real rows only. These used to fall back to a fixture file when the tables were
+  // empty, so a failed competitor scrape still rendered a full, convincing page.
+  const displayProducts = products ?? [];
+  const displayDeals = deals ?? [];
 
   // Calculate SKU matching stats
   const totalProducts = displayProducts.length;

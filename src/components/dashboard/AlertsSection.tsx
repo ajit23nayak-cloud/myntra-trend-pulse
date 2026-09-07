@@ -1,228 +1,250 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Bell, AlertTriangle, TrendingUp, Target, X, Check, Clock, Filter } from 'lucide-react';
+import { timeAgo } from '@/lib/time';
+import { useAlerts, useUpdateAlertStatus } from '@/hooks/useDashboardData';
+import type { Alert, AlertStatus } from '@/types/database';
+import {
+  Bell, AlertTriangle, AlertCircle, TrendingUp, Lightbulb,
+  MessageSquareText, X, Check, Clock, Filter, Loader2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { toast } from '@/hooks/use-toast';
 
-interface Alert {
-  id: number;
-  type: 'price' | 'sentiment' | 'trend' | 'competitor';
-  severity: 'critical' | 'warning' | 'info';
-  title: string;
-  description: string;
-  timestamp: string;
-  read: boolean;
-}
+/** Alert types the scrapers and generate-insights actually write. */
+const typeConfig: Record<string, { icon: typeof Bell; color: string; label: string }> = {
+  competitor_alert: { icon: AlertTriangle, color: 'text-coral', label: 'Competitor' },
+  sentiment_alert: { icon: MessageSquareText, color: 'text-purple', label: 'Sentiment' },
+  trend_alert: { icon: TrendingUp, color: 'text-teal', label: 'Trend' },
+  insight_alert: { icon: Lightbulb, color: 'text-blue', label: 'Insight' },
+};
 
-const initialAlerts: Alert[] = [
-  {
-    id: 1,
-    type: 'competitor',
-    severity: 'critical',
-    title: 'AJIO Flash Sale Detected',
-    description: 'AJIO launched 60% off flash sale on summer collection. Current discount gap is significant.',
-    timestamp: '5 min ago',
-    read: false,
-  },
-  {
-    id: 2,
-    type: 'sentiment',
-    severity: 'warning',
-    title: 'Delivery Sentiment Dropping',
-    description: 'Negative mentions about delivery increased by 15% in the last 24 hours.',
-    timestamp: '23 min ago',
-    read: false,
-  },
-  {
-    id: 3,
-    type: 'trend',
-    severity: 'info',
-    title: 'New Trend Alert: Cherry Red',
-    description: 'Cherry red color trending up 180% on TikTok fashion hashtags.',
-    timestamp: '1 hour ago',
-    read: false,
-  },
-  {
-    id: 4,
-    type: 'price',
-    severity: 'warning',
-    title: 'Price Undercut on Sneakers',
-    description: 'AJIO reduced sneaker prices by average 12%. Consider price adjustment.',
-    timestamp: '2 hours ago',
-    read: true,
-  },
-  {
-    id: 5,
-    type: 'sentiment',
-    severity: 'info',
-    title: 'Positive App Review Spike',
-    description: 'App store positive reviews up 25% after latest update.',
-    timestamp: '3 hours ago',
-    read: true,
-  },
-  {
-    id: 6,
-    type: 'trend',
-    severity: 'warning',
-    title: 'Coquette Style Peak Warning',
-    description: 'Coquette aesthetic showing signs of market saturation. Consider inventory adjustment.',
-    timestamp: '4 hours ago',
-    read: true,
-  },
+const fallbackType = { icon: Bell, color: 'text-muted-foreground', label: 'Alert' };
+
+/** Severities match the ImpactLevel column, not the invented critical/warning/info. */
+const severityConfig: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  critical: { bg: 'bg-destructive/20', border: 'border-destructive/30', text: 'text-destructive', dot: 'bg-destructive' },
+  high: { bg: 'bg-orange/20', border: 'border-orange/30', text: 'text-orange', dot: 'bg-orange' },
+  medium: { bg: 'bg-yellow/20', border: 'border-yellow/30', text: 'text-yellow', dot: 'bg-yellow' },
+  low: { bg: 'bg-blue/20', border: 'border-blue/30', text: 'text-blue', dot: 'bg-blue' },
+};
+
+const fallbackSeverity = severityConfig.low;
+
+const statusFilters = [
+  { id: 'all', label: 'All' },
+  { id: 'active', label: 'Active' },
+  { id: 'acknowledged', label: 'Acknowledged' },
+  { id: 'resolved', label: 'Resolved' },
 ];
 
-const typeConfig = {
-  price: { icon: Target, color: 'text-blue', label: 'Pricing' },
-  sentiment: { icon: Bell, color: 'text-purple', label: 'Sentiment' },
-  trend: { icon: TrendingUp, color: 'text-teal', label: 'Trend' },
-  competitor: { icon: AlertTriangle, color: 'text-coral', label: 'Competitor' },
-};
-
-const severityConfig = {
-  critical: { bg: 'bg-destructive/20', border: 'border-destructive/30', text: 'text-destructive', dot: 'bg-destructive' },
-  warning: { bg: 'bg-yellow/20', border: 'border-yellow/30', text: 'text-yellow', dot: 'bg-yellow' },
-  info: { bg: 'bg-blue/20', border: 'border-blue/30', text: 'text-blue', dot: 'bg-blue' },
-};
+const typeFilters = [
+  { id: 'competitor_alert', label: 'Competitor' },
+  { id: 'sentiment_alert', label: 'Sentiment' },
+  { id: 'trend_alert', label: 'Trend' },
+  { id: 'insight_alert', label: 'Insight' },
+];
 
 export function AlertsSection() {
-  const [alerts, setAlerts] = useState(initialAlerts);
-  const [filter, setFilter] = useState<string>('all');
-  
-  const unreadCount = alerts.filter(a => !a.read).length;
-  
-  const filteredAlerts = filter === 'all' 
-    ? alerts 
-    : filter === 'unread' 
-      ? alerts.filter(a => !a.read)
-      : alerts.filter(a => a.type === filter);
-  
-  const markAsRead = (id: number) => {
-    setAlerts(alerts.map(a => a.id === id ? { ...a, read: true } : a));
+  const { data: alerts, isLoading, isError, refetch } = useAlerts();
+  const updateStatus = useUpdateAlertStatus();
+  const [filter, setFilter] = useState('all');
+
+  const all = alerts ?? [];
+  const activeAlerts = all.filter((a) => a.status === 'active');
+
+  const isStatusFilter = statusFilters.some((f) => f.id === filter);
+  const filteredAlerts = isStatusFilter
+    ? filter === 'all'
+      ? all
+      : all.filter((a) => a.status === filter)
+    : all.filter((a) => a.type === filter);
+
+  const setAlertStatus = async (alertId: string, status: AlertStatus, verb: string) => {
+    try {
+      await updateStatus.mutateAsync({ alertId, status });
+      toast({ title: `Alert ${verb}` });
+    } catch {
+      toast({
+        title: 'Could not update this alert',
+        description: 'The change was not saved. Check your connection and try again.',
+        variant: 'destructive',
+      });
+    }
   };
-  
-  const dismissAlert = (id: number) => {
-    setAlerts(alerts.filter(a => a.id !== id));
+
+  const acknowledgeAll = async () => {
+    const results = await Promise.allSettled(
+      activeAlerts.map((a) => updateStatus.mutateAsync({ alertId: a.id, status: 'acknowledged' })),
+    );
+    const failed = results.filter((r) => r.status === 'rejected').length;
+
+    if (failed === 0) {
+      toast({ title: `${results.length} alerts acknowledged` });
+    } else {
+      toast({
+        title: `${results.length - failed} of ${results.length} acknowledged`,
+        description: `${failed} could not be saved.`,
+        variant: 'destructive',
+      });
+    }
   };
-  
-  const markAllAsRead = () => {
-    setAlerts(alerts.map(a => ({ ...a, read: true })));
-  };
-  
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-2xl font-display font-bold text-foreground">Real-Time Alerts</h2>
             <p className="text-muted-foreground">Monitor critical events and notifications</p>
           </div>
-          {unreadCount > 0 && (
+          {activeAlerts.length > 0 && (
             <Badge className="bg-destructive text-destructive-foreground">
-              {unreadCount} unread
+              {activeAlerts.length} active
             </Badge>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={markAllAsRead} disabled={unreadCount === 0}>
-          <Check className="w-4 h-4 mr-2" />
-          Mark all read
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={acknowledgeAll}
+          disabled={activeAlerts.length === 0 || updateStatus.isPending}
+        >
+          {updateStatus.isPending ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Check className="w-4 h-4 mr-2" />
+          )}
+          Acknowledge all
         </Button>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
-        {['all', 'unread', 'competitor', 'sentiment', 'trend', 'price'].map((f) => (
+        {[...statusFilters, ...typeFilters].map((f) => (
           <Button
-            key={f}
-            variant={filter === f ? 'default' : 'outline'}
+            key={f.id}
+            variant={filter === f.id ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setFilter(f)}
-            className={cn(filter === f && "bg-primary")}
+            onClick={() => setFilter(f.id)}
+            className={cn(filter === f.id && 'bg-primary')}
           >
-            {f === 'all' && <Filter className="w-4 h-4 mr-1" />}
-            {f.charAt(0).toUpperCase() + f.slice(1)}
+            {f.id === 'all' && <Filter className="w-4 h-4 mr-1" />}
+            {f.label}
           </Button>
         ))}
       </div>
 
       {/* Alerts List */}
       <div className="space-y-3 max-h-[600px] overflow-y-auto scrollbar-thin">
-        {filteredAlerts.length === 0 ? (
+        {isLoading ? (
+          <div className="glass-card p-12 text-center">
+            <Loader2 className="w-8 h-8 text-muted-foreground mx-auto mb-4 animate-spin" />
+            <p className="text-muted-foreground">Loading alerts</p>
+          </div>
+        ) : isError ? (
+          <div className="glass-card p-12 text-center">
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <p className="text-foreground font-medium mb-1">Could not load alerts</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              The dashboard could not reach the database.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Try again
+            </Button>
+          </div>
+        ) : filteredAlerts.length === 0 ? (
           <div className="glass-card p-12 text-center">
             <Bell className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No alerts to display</p>
+            <p className="text-foreground font-medium mb-1">
+              {all.length === 0 ? 'No alerts yet' : 'Nothing matches this filter'}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {all.length === 0
+                ? 'Alerts appear here once the scrapers and insight generator have run.'
+                : 'Try a different filter.'}
+            </p>
           </div>
         ) : (
-          filteredAlerts.map((alert, idx) => {
-            const TypeIcon = typeConfig[alert.type].icon;
-            const severity = severityConfig[alert.severity];
-            
+          filteredAlerts.map((alert: Alert, idx) => {
+            const type = typeConfig[alert.type] ?? fallbackType;
+            const TypeIcon = type.icon;
+            const severity = severityConfig[alert.severity] ?? fallbackSeverity;
+            const isActive = alert.status === 'active';
+            const age = timeAgo(alert.created_at);
+
             return (
-              <div 
+              <div
                 key={alert.id}
                 className={cn(
-                  "glass-card p-4 border-l-4 animate-fade-in transition-all duration-200",
+                  'glass-card p-4 border-l-4 animate-fade-in transition-all duration-200',
                   severity.border,
-                  !alert.read && "bg-card/80"
+                  isActive && 'bg-card/80',
+                  alert.status === 'resolved' && 'opacity-60',
                 )}
-                style={{ animationDelay: `${idx * 50}ms` }}
+                style={{ animationDelay: `${Math.min(idx, 10) * 50}ms` }}
               >
                 <div className="flex items-start gap-4">
-                  {/* Unread indicator */}
-                  {!alert.read && (
-                    <div className={cn("w-2 h-2 rounded-full mt-2 pulse-dot", severity.dot)} />
+                  {isActive && (
+                    <div className={cn('w-2 h-2 rounded-full mt-2 pulse-dot shrink-0', severity.dot)} />
                   )}
-                  
-                  {/* Type Icon */}
-                  <div className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
-                    severity.bg
-                  )}>
-                    <TypeIcon className={cn("w-5 h-5", typeConfig[alert.type].color)} />
+
+                  <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center shrink-0', severity.bg)}>
+                    <TypeIcon className={cn('w-5 h-5', type.color)} />
                   </div>
-                  
-                  {/* Content */}
+
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className={cn(
-                        "font-semibold",
-                        alert.read ? "text-muted-foreground" : "text-foreground"
-                      )}>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className={cn('font-semibold', isActive ? 'text-foreground' : 'text-muted-foreground')}>
                         {alert.title}
                       </h3>
-                      <Badge variant="outline" className="text-xs">
-                        {typeConfig[alert.type].label}
-                      </Badge>
-                      <Badge className={cn("text-xs capitalize", severity.bg, severity.text)}>
+                      <Badge variant="outline" className="text-xs">{type.label}</Badge>
+                      <Badge className={cn('text-xs capitalize', severity.bg, severity.text)}>
                         {alert.severity}
                       </Badge>
+                      {!isActive && (
+                        <Badge variant="outline" className="text-xs capitalize text-muted-foreground">
+                          {alert.status}
+                        </Badge>
+                      )}
                     </div>
-                    <p className="text-sm text-muted-foreground mb-2">{alert.description}</p>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground/70">
-                      <Clock className="w-3 h-3" />
-                      <span>{alert.timestamp}</span>
+                    <p className="text-sm text-muted-foreground mb-2">{alert.message}</p>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground/70 flex-wrap">
+                      {age && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {age}
+                        </span>
+                      )}
+                      {alert.source && <span>via {alert.source}</span>}
                     </div>
                   </div>
-                  
-                  {/* Actions */}
-                  <div className="flex items-center gap-1">
-                    {!alert.read && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {isActive && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-8 w-8"
-                        onClick={() => markAsRead(alert.id)}
+                        title="Acknowledge"
+                        disabled={updateStatus.isPending}
+                        onClick={() => setAlertStatus(alert.id, 'acknowledged', 'acknowledged')}
                       >
                         <Check className="w-4 h-4" />
                       </Button>
                     )}
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => dismissAlert(alert.id)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+                    {alert.status !== 'resolved' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        title="Resolve"
+                        disabled={updateStatus.isPending}
+                        onClick={() => setAlertStatus(alert.id, 'resolved', 'resolved')}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -233,22 +255,19 @@ export function AlertsSection() {
 
       {/* Stats Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="glass-card p-4 text-center">
-          <p className="text-2xl font-display font-bold text-coral">{alerts.filter(a => a.severity === 'critical').length}</p>
-          <p className="text-xs text-muted-foreground">Critical</p>
-        </div>
-        <div className="glass-card p-4 text-center">
-          <p className="text-2xl font-display font-bold text-yellow">{alerts.filter(a => a.severity === 'warning').length}</p>
-          <p className="text-xs text-muted-foreground">Warnings</p>
-        </div>
-        <div className="glass-card p-4 text-center">
-          <p className="text-2xl font-display font-bold text-blue">{alerts.filter(a => a.severity === 'info').length}</p>
-          <p className="text-xs text-muted-foreground">Info</p>
-        </div>
-        <div className="glass-card p-4 text-center">
-          <p className="text-2xl font-display font-bold text-teal">{alerts.filter(a => a.type === 'trend').length}</p>
-          <p className="text-xs text-muted-foreground">Trend Alerts</p>
-        </div>
+        {[
+          { label: 'Critical', value: all.filter((a) => a.severity === 'critical').length, color: 'text-coral' },
+          { label: 'High', value: all.filter((a) => a.severity === 'high').length, color: 'text-orange' },
+          { label: 'Active', value: activeAlerts.length, color: 'text-yellow' },
+          { label: 'Resolved', value: all.filter((a) => a.status === 'resolved').length, color: 'text-teal' },
+        ].map((stat) => (
+          <div key={stat.label} className="glass-card p-4 text-center">
+            <p className={cn('text-2xl font-display font-bold', stat.color)}>
+              {isLoading ? '—' : stat.value}
+            </p>
+            <p className="text-xs text-muted-foreground">{stat.label}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
