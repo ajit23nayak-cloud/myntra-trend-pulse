@@ -1,6 +1,7 @@
 import { useFashionTrends, useSentimentReviews, useAlerts, useCompetitorProducts } from '@/hooks/useDashboardData';
 import { DataFreshness } from './DataFreshness';
-import { useSentimentChartData } from '@/hooks/useSentimentChartData';
+import { DataProvenance } from './DataProvenance';
+import { useSentimentChartData, useSentimentByTheme } from '@/hooks/useSentimentChartData';
 import { StatCard } from './StatCard';
 import { 
   MessageSquareText, 
@@ -12,7 +13,7 @@ import {
   Flame,
   Info
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -70,6 +71,10 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
   
   // Use shared hook for sentiment chart data
   const sentimentOverTime = useSentimentChartData(reviews as any);
+  const sentimentByTheme = useSentimentByTheme(reviews as any);
+  // A single point is not a trend. Below two weeks of dated reviews the card
+  // shows the theme breakdown instead of an axis with nothing on it.
+  const hasTimeline = sentimentOverTime.length >= 2;
   
   // Calculate real sentiment stats from database
   const sentimentStats = useMemo(() => {
@@ -202,6 +207,8 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
         <DataFreshness />
       </div>
 
+      <DataProvenance />
+
       {/* Stats Grid - Now using real data */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="relative">
@@ -274,7 +281,9 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
         <div className="lg:col-span-2 glass-card p-6 animate-fade-in" style={{ animationDelay: '200ms' }}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-1">
-              <h3 className="text-lg font-semibold text-foreground">Sentiment Trend</h3>
+              <h3 className="text-lg font-semibold text-foreground">
+                {hasTimeline ? 'Sentiment Trend' : 'What customers talk about'}
+              </h3>
               <InfoTooltip description={sectionDescriptions.sentimentTrend} />
             </div>
             <Button variant="ghost" size="sm" onClick={() => onNavigate('sentiment')} className="gap-1 text-primary">
@@ -293,6 +302,30 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
             </div>
           </div>
           <div className="h-[200px]">
+            {!hasTimeline ? (
+              // Most store-front reviews carry no date, so a weekly timeline is
+              // usually empty. Every review does carry a theme, so show that
+              // instead of an empty axis. Flips back to the timeline on its own
+              // once enough dated reviews arrive.
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sentimentByTheme} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  <XAxis type="number" domain={[0, 100]} stroke="hsl(215, 20%, 55%)" fontSize={12} tickLine={false} axisLine={false} unit="%" />
+                  <YAxis dataKey="theme" type="category" width={110} stroke="hsl(215, 20%, 55%)" fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    cursor={{ fill: 'hsl(var(--muted))', opacity: 0.3 }}
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      color: 'hsl(var(--foreground))'
+                    }}
+                    formatter={(value: number, name: string) => [`${value}%`, name.charAt(0).toUpperCase() + name.slice(1)]}
+                  />
+                  <Bar dataKey="positive" stackId="s" fill="hsl(172, 66%, 50%)" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="negative" stackId="s" fill="hsl(0, 84%, 60%)" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={sentimentOverTime}>
                 <defs>
@@ -332,7 +365,14 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
+          {!hasTimeline && (
+            <p className="text-xs text-muted-foreground/70 mt-2">
+              Share of each theme's mentions, across {sentimentStats.total} reviews. A week-by-week
+              trend appears once enough reviews carry a publication date.
+            </p>
+          )}
         </div>
 
         {/* Hot Fashion Trends */}
