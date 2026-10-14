@@ -9,8 +9,8 @@ name: Refresh dashboard data
 # panel only displays jobs, it cannot create them.
 #
 # The five edge functions are declared `verify_jwt = false` in
-# supabase/config.toml, so these calls need no key and the workflow needs no
-# secrets. That is also why anyone who finds this repository can trigger a
+# supabase/config.toml, so these calls need no key and the collection step needs
+# no secrets. That is also why anyone who finds this repository can trigger a
 # scrape; see the README for why that gap is still open.
 
 on:
@@ -21,26 +21,28 @@ on:
     - cron: '0 2,14 * * *'
   workflow_dispatch:
 
+env:
+  FUNCTIONS: https://ymqvtwjubhbxsmgylabc.lovable.cloud/functions/v1
+  REST: https://ymqvtwjubhbxsmgylabc.lovable.cloud/rest/v1
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - name: Collect competitor prices, reviews and trends
-        env:
-          BASE: https://ymqvtwjubhbxsmgylabc.lovable.cloud/functions/v1
+      - name: Collect prices, reviews and trends
         run: |
-          # The competitor scraper runs 9 Firecrawl searches and regularly takes
-          # longer than the platform's 150s response limit. The connection drops
-          # but the function keeps running and still writes its rows, so a
-          # timeout here is expected and must not fail the workflow.
+          # The competitor scraper reads four retailers across four categories
+          # and can take longer than the platform's 150s response limit. The
+          # connection drops but the function keeps running and still writes its
+          # rows, so a timeout here is expected and must not fail the workflow.
           call() {
             echo "--- $1 ---"
             code=$(curl -sS -o /tmp/out -w '%{http_code}' \
-              -X POST "$BASE/$1" \
+              -X POST "$FUNCTIONS/$1" \
               -H 'Content-Type: application/json' \
               -d '{}' --max-time 170) || code="timeout"
             echo "status: $code"
-            head -c 600 /tmp/out || true
+            head -c 900 /tmp/out || true
             echo
           }
 
@@ -50,17 +52,48 @@ jobs:
           # Reads what the three above stored, so it goes last.
           call generate-insights
 
-      - name: Report what was actually written
+      - name: Report what was written
         env:
-          BASE: https://ymqvtwjubhbxsmgylabc.lovable.cloud/rest/v1
           KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          # A run that stored nothing is logged as 'failed' with a reason, so the
-          # last few rows of scrape_logs tell you whether this run did anything.
-          # Falls back silently if the repository variable is not set.
           if [ -z "$KEY" ]; then
             echo "SUPABASE_PUBLISHABLE_KEY repository variable not set; skipping summary."
             exit 0
           fi
-          curl -sS "$BASE/scrape_logs?select=source,status,records_processed,created_at&order=created_at.desc&limit=4" \
+          # A run that stored nothing is logged as 'failed' with a reason, so
+          # these rows say whether this run actually did anything.
+          curl -sS "$REST/scrape_logs?select=source,status,records_processed,created_at&order=created_at.desc&limit=4" \
             -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | tr '}' '}\n'
+
+      - name: Send a digest to Slack
+        # Nobody opens a dashboard daily, so intelligence that lives only in the
+        # app does not get read. This pushes the headline findings instead.
+        #
+        # Opt-in: add a repository secret SLACK_WEBHOOK_URL (Slack → Incoming
+        # Webhooks). Without it this step says so and exits clean, so the
+        # workflow still passes for anyone who has not set one up.
+        continue-on-error: true
+        env:
+          KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "No SLACK_WEBHOOK_URL secret set — skipping the digest."
+            echo "Add one under Settings > Secrets and variables > Actions to switch it on."
+            exit 0
+          fi
+          if [ -z "$KEY" ]; then
+            echo "SUPABASE_PUBLISHABLE_KEY repository variable not set; cannot build a digest."
+            exit 0
+          fi
+
+          TODAY=$(date -u +%Y-%m-%d)
+
+          # Matched products where a competitor undercuts us, worst gap first.
+          curl -sS "$REST/product_price_comparison?select=own_product_name,competitor,own_price,competitor_price,price_gap&price_gap=lt.0&order=price_gap.asc&limit=5" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" > /tmp/gaps.json
+
+          curl -sS "$REST/alerts?select=title&status=eq.active&severity=in.(critical,high)&created_at=gte.$TODAY&limit=5" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" > /tmp/alerts.json
+
+          python3 .github/scripts/slack_digest.py "$TODAY" /tmp/gaps.json /tmp/alerts.json "$WEBHOOK"
