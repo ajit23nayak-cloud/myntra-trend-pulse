@@ -63,6 +63,14 @@ function InfoTooltip({ description }: { description: string }) {
   );
 }
 
+/**
+ * Dated reviews needed before the Overview draws a weekly trend line.
+ *
+ * Most store-front reviews carry no publication date, so this is usually not met
+ * and the card shows sentiment by theme instead — which every review can answer.
+ */
+const MIN_REVIEWS_FOR_TIMELINE = 20;
+
 export function OverviewSection({ onNavigate }: OverviewSectionProps) {
   const { data: trends } = useFashionTrends();
   const { data: reviews } = useSentimentReviews({ limit: 500 });
@@ -72,9 +80,17 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
   // Use shared hook for sentiment chart data
   const sentimentOverTime = useSentimentChartData(reviews as any);
   const sentimentByTheme = useSentimentByTheme(reviews as any);
-  // A single point is not a trend. Below two weeks of dated reviews the card
-  // shows the theme breakdown instead of an axis with nothing on it.
-  const hasTimeline = sentimentOverTime.length >= 2;
+  // A handful of points is not a trend. Three dated reviews spread over three
+  // weeks cleared a "two or more buckets" test and drew a confident months-long
+  // line, while the legend beside it counted all 351 reviews — so the chart read
+  // as ~100% negative next to a legend saying 142 positive. The timeline needs a
+  // meaningful number of dated reviews behind it, not just two buckets.
+  const datedReviews = useMemo(
+    () => (reviews ?? []).filter((r: any) => r.review_date),
+    [reviews]
+  );
+  const hasTimeline = datedReviews.length >= MIN_REVIEWS_FOR_TIMELINE && sentimentOverTime.length >= 2;
+
   
   // Calculate real sentiment stats from database
   const sentimentStats = useMemo(() => {
@@ -132,6 +148,14 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
   
   
   // Calculate price competitiveness from real competitor data
+  // The legend has to describe what is actually plotted, not the whole table.
+  const legendCounts = hasTimeline
+    ? {
+        positive: datedReviews.filter((r: any) => r.sentiment === 'positive').length,
+        negative: datedReviews.filter((r: any) => r.sentiment === 'negative').length,
+      }
+    : { positive: sentimentStats.positive, negative: sentimentStats.negative };
+
   const priceCompetitiveness = useMemo(() => {
     // Null means "not measured", and the card renders a dash. Both of these
     // branches used to return a fixed { score: 87, avgGap: -2.3 }, so the tile
@@ -294,11 +318,11 @@ export function OverviewSection({ onNavigate }: OverviewSectionProps) {
           <div className="flex items-center gap-4 mb-3 text-xs">
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-full bg-teal" />
-              <span className="text-muted-foreground">Positive ({sentimentStats.positive})</span>
+              <span className="text-muted-foreground">Positive ({legendCounts.positive})</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded-full bg-coral" />
-              <span className="text-muted-foreground">Negative ({sentimentStats.negative})</span>
+              <span className="text-muted-foreground">Negative ({legendCounts.negative})</span>
             </div>
           </div>
           <div className="h-[200px]">
