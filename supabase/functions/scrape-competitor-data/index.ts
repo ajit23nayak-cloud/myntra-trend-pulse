@@ -62,12 +62,48 @@ const CATEGORIES = [
   { query: 'kurta ethnic wear price', category: 'Ethnic Wear' },
 ];
 
-const KNOWN_BRANDS = [
-  'Puma', 'Nike', 'Adidas', 'Levis', 'Wrangler', 'Allen Solly', 'Van Heusen',
-  'Peter England', 'Louis Philippe', 'Jack & Jones', 'Vero Moda', 'Roadster',
-  'BIBA', 'Aurelia', 'Global Desi', 'Reebok', 'Asics', 'Skechers', 'HRX',
-  'W for Woman', 'Libas', 'Sangria', 'Campus', 'Bata', 'Crocs',
-];
+/**
+ * How many of our products to look up on other retailers per run.
+ *
+ * Each one is a Firecrawl search, so this is the main cost lever: pass 1 is four
+ * searches, pass 2 is this many.
+ */
+const LOOKUP_LIMIT = 12;
+
+/**
+ * Words that cannot be part of a brand name, used to find where the brand ends.
+ *
+ * Indian fashion listings put the brand first and then describe the garment:
+ * "Baesd Girls Floral Printed Ruffles Cotton Top". So the brand is the leading
+ * words up to the first gender, colour or garment word.
+ *
+ * A fixed list of known brands was tried first and failed badly — it carried
+ * about 25 big names, while real catalogues run to thousands, so 153 of 161
+ * scraped products came back with no brand and therefore no match key at all.
+ */
+const DESCRIPTOR_STOP = new Set(`men women girls boys kids unisex boy girl
+black white red green blue cream yellow navy maroon purple pink indigo grey gray beige olive brown orange teal
+crop cowl ribbed regular slim sleeveless floral printed print half full short long solid striped
+round square neck collar pack cotton polyester linen denim silk wool blend
+fit oversized relaxed casual formal trendy pleated ruffle ruffles flutter lace net peplum boho
+top tops tshirt shirt blouse dress kurta jeans trousers pants shorts skirt sneakers shoes sandals
+sleeves sleeve typographic leaf polka dots zip hem detail piping wrapped`.split(/\s+/));
+
+/** Leading words of a title, up to the first descriptor, capped at three. */
+function extractBrand(title: string): string | null {
+  const brand: string[] = [];
+  for (const word of title.trim().split(/\s+/)) {
+    if (DESCRIPTOR_STOP.has(word.toLowerCase().replace(/[^a-z]/g, ''))) break;
+    brand.push(word);
+    if (brand.length === 3) break;
+  }
+  return brand.length ? brand.join(' ') : null;
+}
+
+/** Which retailer a result URL belongs to, or null if it is none of ours. */
+function retailerForUrl(url: string) {
+  return RETAILERS.find((r) => url.includes(r.site)) ?? null;
+}
 
 /** Words too common to identify a product. */
 const STOPWORDS = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'our']);
@@ -169,13 +205,9 @@ function parseProducts(
     if (prices.length === 0) continue;
 
     const link = line.match(retailer.productUrl);
-    const brand = KNOWN_BRANDS.find((b) =>
-      new RegExp(`\\b${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(line)
-    ) ?? null;
 
-    // Without a product link we fall back to brand detection, and then the line
-    // still has to look like prose rather than markup.
-    if (!link && (!brand || MARKUP_LINE.test(line))) continue;
+    // Without a product link the line still has to look like prose, not markup.
+    if (!link && MARKUP_LINE.test(line)) continue;
 
     let title: string;
     let productUrl: string | null;
@@ -197,11 +229,10 @@ function parseProducts(
     const words = title.split(/\s+/).filter((w) => /[a-z]{2,}/i.test(w));
     if (words.length < 2 || title.length < 8) continue;
 
-    // A brand inside the slug counts too, so linked products are not discarded
-    // just because the brand name sat outside the visible line text.
-    const resolvedBrand = brand ?? KNOWN_BRANDS.find((b) =>
-      new RegExp(`\\b${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title)
-    ) ?? null;
+    const resolvedBrand = extractBrand(title);
+    // No brand and no product link means nothing to match on later, and a row
+    // that can never be compared is not worth storing.
+    if (!resolvedBrand && !link) continue;
 
     const sorted = [...prices].sort((a, b) => a - b);
     const currentPrice = sorted[0];
@@ -309,27 +340,79 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // Every retailer is asked the same questions. Searches run concurrently
-    // because sequentially this exceeded the platform's 150s response limit.
-    const productTasks = RETAILERS.flatMap((retailer) =>
-      CATEGORIES.map((cat) => ({ retailer, cat }))
-    );
+    const own = RETAILERS.find((r) => r.isOwnBrand)!;
+    const rivals = RETAILERS.filter((r) => !r.isOwnBrand);
 
-    const productResults = await Promise.all(
-      productTasks.map(async ({ retailer, cat }) => {
-        const results = await firecrawlSearch(
-          FIRECRAWL_API_KEY,
-          `site:${retailer.site} ${cat.query}`,
+    // Pass 1: our own catalogue, across a fixed category grid.
+    const ownResults = await Promise.all(
+      CATEGORIES.map(async (cat) => {
+        const results = await firecrawlSearch(FIRECRAWL_API_KEY, `site:${own.site} ${cat.query}`);
+        return results.flatMap((r: any) =>
+          r.markdown ? parseProducts(r.markdown, own, r.url || '', cat.category) : []
         );
-        const found = results.flatMap((r: any) =>
-          r.markdown ? parseProducts(r.markdown, retailer, r.url || '', cat.category) : []
-        );
-        return { retailer, category: cat.category, found, searched: results.length > 0 };
       })
     );
 
+    const byRetailer = new Map<string, Map<string, any>>();
+    const coverage: Record<string, Record<string, number>> = {};
+
+    const addProduct = (retailer: typeof RETAILERS[number], category: string, p: any) => {
+      coverage[retailer.name] ??= {};
+      coverage[retailer.name][category] = (coverage[retailer.name][category] ?? 0) + 1;
+      const bucket = byRetailer.get(retailer.name) ?? new Map();
+      const key = (p.url ?? p.name).toLowerCase();
+      const existing = bucket.get(key);
+      if (!existing || p.price < existing.price) bucket.set(key, { ...p, retailer });
+      byRetailer.set(retailer.name, bucket);
+    };
+
+    const ownProducts: any[] = [];
+    for (const found of ownResults) {
+      for (const p of found) {
+        addProduct(own, p.category, p);
+        if (p.matchKey) ownProducts.push(p);
+      }
+    }
+
+    /**
+     * Pass 2: go looking for *our* products on the other retailers.
+     *
+     * Searching each site separately — the obvious approach, and the first one
+     * tried — returns whatever that site's SEO surfaces, which is a different
+     * set of products on every site. It produced 132 rows across four retailers
+     * and exactly zero matched pairs, because Myntra returned "Baesd Girls
+     * Floral Top" while AJIO returned "Maheshvi Women Ribbed Top".
+     *
+     * So each query is one of our product names with no site filter, and
+     * whichever retailer the result URL belongs to is the retailer it counts
+     * for. That is how a price comparison actually has to work: pick the
+     * product first, then find it elsewhere.
+     */
+    const lookups = ownProducts.slice(0, LOOKUP_LIMIT);
+    const rivalResults = await Promise.all(
+      lookups.map(async (product) => {
+        const results = await firecrawlSearch(
+          FIRECRAWL_API_KEY,
+          `"${product.name}" price buy online`,
+        );
+        return results.flatMap((r: any) => {
+          const retailer = retailerForUrl(r.url || '');
+          if (!retailer || retailer.isOwnBrand || !r.markdown) return [];
+          // Carry the retailer with each product; the URL is the only thing that
+          // says which site a result came from.
+          return parseProducts(r.markdown, retailer, r.url || '', product.category)
+            .map((p: any) => ({ product: p, retailer }));
+        });
+      })
+    );
+
+    for (const found of rivalResults) {
+      for (const { product, retailer } of found) addProduct(retailer, product.category, product);
+    }
+
+    // Deals, one search per competitor.
     const dealResults = await Promise.all(
-      RETAILERS.filter((r) => !r.isOwnBrand).map(async (retailer) => {
+      rivals.map(async (retailer) => {
         const results = await firecrawlSearch(
           FIRECRAWL_API_KEY,
           `site:${retailer.site} sale offers discount`,
@@ -338,22 +421,6 @@ serve(async (req) => {
       })
     );
 
-    // Deduplicate per retailer, keeping the cheapest sighting of each product.
-    const byRetailer = new Map<string, Map<string, any>>();
-    const coverage: Record<string, Record<string, number>> = {};
-
-    for (const { retailer, category, found } of productResults) {
-      coverage[retailer.name] ??= {};
-      coverage[retailer.name][category] = (coverage[retailer.name][category] ?? 0) + found.length;
-
-      const bucket = byRetailer.get(retailer.name) ?? new Map();
-      for (const p of found) {
-        const key = (p.url ?? p.name).toLowerCase();
-        const existing = bucket.get(key);
-        if (!existing || p.price < existing.price) bucket.set(key, { ...p, retailer });
-      }
-      byRetailer.set(retailer.name, bucket);
-    }
 
     let productsStored = 0;
     let historyRows = 0;
