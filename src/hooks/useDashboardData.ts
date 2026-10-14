@@ -263,6 +263,130 @@ export function useUpdateAlertStatus() {
 }
 
 /**
+ * src/integrations/supabase/types.ts is generated from the live schema and is
+ * marked "do not edit directly". Until migration 20261014090000 is applied it
+ * knows neither the product_price_comparison view nor the is_own_brand and
+ * match_key columns, so these three hooks reach the client through a narrow
+ * escape. Once Lovable regenerates the types the casts can go.
+ */
+const untypedDb = supabase as any;
+
+export interface PriceComparison {
+  own_product_id: string;
+  competitor_product_id: string;
+  match_key: string;
+  brand: string | null;
+  category: string;
+  own_product_name: string;
+  own_product_url: string | null;
+  own_price: number;
+  competitor: string;
+  competitor_product_name: string;
+  competitor_product_url: string | null;
+  competitor_price: number;
+  price_gap: number;
+  price_gap_percent: number | null;
+  compared_at: string;
+}
+
+/**
+ * Products found on both Myntra and a competitor, joined on match_key.
+ *
+ * Reads the product_price_comparison view, so the matching rule lives in one
+ * place. A positive price_gap means the competitor is dearer than we are.
+ */
+export function useProductComparison(competitor?: string) {
+  return useQuery({
+    queryKey: ['product-comparison', competitor],
+    queryFn: async () => {
+      let query = untypedDb
+        .from('product_price_comparison')
+        .select('*')
+        .order('price_gap', { ascending: true });
+
+      if (competitor) query = query.eq('competitor', competitor);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as PriceComparison[];
+    }
+  });
+}
+
+/** Which retailers we actually hold prices for, and how many rows each. */
+export function useRetailerCoverage() {
+  return useQuery({
+    queryKey: ['retailer-coverage'],
+    queryFn: async () => {
+      const { data, error } = await untypedDb
+        .from('competitor_products')
+        .select('competitor, is_own_brand, category, match_key');
+
+      if (error) throw error;
+
+      const byRetailer = new Map<string, { competitor: string; isOwnBrand: boolean; total: number; matchable: number; categories: Set<string> }>();
+      for (const row of (data ?? []) as any[]) {
+        const entry = byRetailer.get(row.competitor) ?? {
+          competitor: row.competitor,
+          isOwnBrand: !!row.is_own_brand,
+          total: 0,
+          matchable: 0,
+          categories: new Set<string>(),
+        };
+        entry.total += 1;
+        if (row.match_key) entry.matchable += 1;
+        if (row.category) entry.categories.add(row.category);
+        byRetailer.set(row.competitor, entry);
+      }
+
+      return [...byRetailer.values()]
+        .map((e) => ({ ...e, categories: [...e.categories] }))
+        .sort((a, b) => Number(b.isOwnBrand) - Number(a.isOwnBrand) || b.total - a.total);
+    }
+  });
+}
+
+/**
+ * Price movement over time, averaged per day across the products we track.
+ *
+ * price_history gets one row per product per scrape, so this is the first thing
+ * on the dashboard that shows change rather than a snapshot.
+ */
+export function usePriceTrend(days = 30) {
+  return useQuery({
+    queryKey: ['price-trend', days],
+    queryFn: async () => {
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+      const { data, error } = await untypedDb
+        .from('price_history')
+        .select('price, recorded_at, competitor_products(competitor, is_own_brand, category)')
+        .gte('recorded_at', since)
+        .order('recorded_at', { ascending: true });
+
+      if (error) throw error;
+
+      // One point per retailer per day.
+      const buckets = new Map<string, { day: string; retailer: string; total: number; count: number }>();
+      for (const row of (data ?? []) as any[]) {
+        const retailer = row.competitor_products?.competitor;
+        if (!retailer) continue;
+        const day = String(row.recorded_at).slice(0, 10);
+        const key = `${day}|${retailer}`;
+        const b = buckets.get(key) ?? { day, retailer, total: 0, count: 0 };
+        b.total += Number(row.price);
+        b.count += 1;
+        buckets.set(key, b);
+      }
+
+      return [...buckets.values()]
+        .map((b) => ({ day: b.day, retailer: b.retailer, avgPrice: Math.round(b.total / b.count), samples: b.count }))
+        .sort((a, b) => a.day.localeCompare(b.day));
+    }
+  });
+}
+
+/**
  * When the scrapers last completed a run.
  *
  * The header used to print a fixed "2 minutes ago". This reads the newest

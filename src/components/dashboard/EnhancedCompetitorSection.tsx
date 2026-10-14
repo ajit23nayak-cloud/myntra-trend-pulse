@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CompetitiveHeatmap } from './CompetitiveHeatmap';
+import { RetailerComparison } from './RetailerComparison';
 import { FlashSaleTracker } from './FlashSaleTracker';
 import { PriceGapTimeline } from './PriceGapTimeline';
 import { PromotionDepthTracker } from './PromotionDepthTracker';
@@ -121,8 +122,9 @@ export function EnhancedCompetitorSection() {
         </div>
       </div>
 
-      <Tabs defaultValue="heatmap" className="space-y-4">
+      <Tabs defaultValue="comparison" className="space-y-4">
         <TabsList className="flex-wrap">
+          <TabsTrigger value="comparison">Price Comparison</TabsTrigger>
           <TabsTrigger value="heatmap">Price Heatmap</TabsTrigger>
           <TabsTrigger value="timeline">Price Timeline</TabsTrigger>
           <TabsTrigger value="promotion-depth">Promotion Depth</TabsTrigger>
@@ -130,6 +132,10 @@ export function EnhancedCompetitorSection() {
           <TabsTrigger value="pricing">SKU Comparison</TabsTrigger>
           <TabsTrigger value="deals">Active Deals</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="comparison">
+          <RetailerComparison />
+        </TabsContent>
 
         <TabsContent value="heatmap">
           <Card className="p-6">
