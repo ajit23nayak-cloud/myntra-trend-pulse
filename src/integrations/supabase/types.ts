@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
@@ -156,7 +156,10 @@ export type Database = {
           discount_percentage: number | null
           id: string
           in_stock: boolean | null
+          is_own_brand: boolean
+          match_key: string | null
           myntra_equivalent_price: number | null
+          normalized_title: string | null
           original_price: number | null
           price_difference: number | null
           product_name: string
@@ -173,7 +176,10 @@ export type Database = {
           discount_percentage?: number | null
           id?: string
           in_stock?: boolean | null
+          is_own_brand?: boolean
+          match_key?: string | null
           myntra_equivalent_price?: number | null
+          normalized_title?: string | null
           original_price?: number | null
           price_difference?: number | null
           product_name: string
@@ -190,7 +196,10 @@ export type Database = {
           discount_percentage?: number | null
           id?: string
           in_stock?: boolean | null
+          is_own_brand?: boolean
+          match_key?: string | null
           myntra_equivalent_price?: number | null
+          normalized_title?: string | null
           original_price?: number | null
           price_difference?: number | null
           product_name?: string
@@ -418,6 +427,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "competitor_products"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_price_comparison"
+            referencedColumns: ["competitor_product_id"]
+          },
+          {
+            foreignKeyName: "price_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_price_comparison"
+            referencedColumns: ["own_product_id"]
           },
         ]
       }
@@ -653,7 +676,26 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      product_price_comparison: {
+        Row: {
+          brand: string | null
+          category: string | null
+          compared_at: string | null
+          competitor: string | null
+          competitor_price: number | null
+          competitor_product_id: string | null
+          competitor_product_name: string | null
+          competitor_product_url: string | null
+          match_key: string | null
+          own_price: number | null
+          own_product_id: string | null
+          own_product_name: string | null
+          own_product_url: string | null
+          price_gap: number | null
+          price_gap_percent: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
