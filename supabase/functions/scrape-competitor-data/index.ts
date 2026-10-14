@@ -6,336 +6,130 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+/**
+ * Retailers to read, including our own.
+ *
+ * Myntra is scraped exactly like the others. Without it there is no left-hand
+ * side to any comparison, which is why price gap, SKU comparison and inventory
+ * match were all dead: the table held AJIO only and the Myntra column was null.
+ *
+ * `productUrl` captures the slug and the id from a product link. The slug is the
+ * product name, which is far cleaner than the surrounding markdown.
+ */
+const RETAILERS = [
+  {
+    name: 'Myntra',
+    site: 'myntra.com',
+    isOwnBrand: true,
+    productUrl: /https?:\/\/(?:www\.)?myntra\.com\/[^\s)]*?\/([a-z0-9-]{8,})\/(\d{4,})\/buy/i,
+    buildUrl: (slug: string, id: string) => `https://www.myntra.com/${slug}/${id}/buy`,
+  },
+  {
+    name: 'AJIO',
+    site: 'ajio.com',
+    isOwnBrand: false,
+    productUrl: /https?:\/\/(?:www\.)?ajio\.com\/([a-z0-9-]{8,})\/p\/(\d+)/i,
+    buildUrl: (slug: string, id: string) => `https://www.ajio.com/${slug}/p/${id}`,
+  },
+  {
+    name: 'Nykaa Fashion',
+    site: 'nykaafashion.com',
+    isOwnBrand: false,
+    productUrl: /https?:\/\/(?:www\.)?nykaafashion\.com\/([a-z0-9-]{8,})\/p\/(\d+)/i,
+    buildUrl: (slug: string, id: string) => `https://www.nykaafashion.com/${slug}/p/${id}`,
+  },
+  {
+    name: 'Tata CLiQ',
+    site: 'tatacliq.com',
+    isOwnBrand: false,
+    productUrl: /https?:\/\/(?:www\.)?tatacliq\.com\/([a-z0-9-]{8,})\/p-([a-z0-9]+)/i,
+    buildUrl: (slug: string, id: string) => `https://www.tatacliq.com/${slug}/p-${id}`,
+  },
+];
 
-  try {
-    const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+/**
+ * A fixed grid of categories, read for every retailer.
+ *
+ * Coverage used to be whatever a handful of ad-hoc searches happened to return,
+ * which made the sample indefensible: you could not say what the 30 rows were a
+ * sample *of*. Every retailer is now asked the same four questions, so counts
+ * are comparable across retailers and the gaps are visible.
+ */
+const CATEGORIES = [
+  { query: 'women tops price', category: 'Women Tops' },
+  { query: 'men shirts price', category: 'Men Shirts' },
+  { query: 'sneakers shoes price', category: 'Sneakers' },
+  { query: 'kurta ethnic wear price', category: 'Ethnic Wear' },
+];
 
-    if (!FIRECRAWL_API_KEY) {
-      throw new Error('FIRECRAWL_API_KEY is not configured');
-    }
+const KNOWN_BRANDS = [
+  'Puma', 'Nike', 'Adidas', 'Levis', 'Wrangler', 'Allen Solly', 'Van Heusen',
+  'Peter England', 'Louis Philippe', 'Jack & Jones', 'Vero Moda', 'Roadster',
+  'BIBA', 'Aurelia', 'Global Desi', 'Reebok', 'Asics', 'Skechers', 'HRX',
+  'W for Woman', 'Libas', 'Sangria', 'Campus', 'Bata', 'Crocs',
+];
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+/** Words too common to identify a product. */
+const STOPWORDS = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'our']);
 
-    console.log('Starting AJIO competitor data scraping via search API...');
+/**
+ * Cross-retailer product identity.
+ *
+ * Brand plus the three longest meaningful words of the title, lowercased and
+ * sorted, so "Nike Men Court Vision Low Lace Up Sneakers" and "Nike Court Vision
+ * Low Sneakers For Men" produce the same key.
+ *
+ * A heuristic, and an honest one: it will miss pairs that word things very
+ * differently, and can occasionally join two colourways of the same style. The
+ * normalised title is stored next to it so a bad match can be seen rather than
+ * guessed at. Returns null when there is not enough to go on, and a null key
+ * simply never matches.
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    // Apparel spelling variants that otherwise split the same product in two:
+    // "T Shirt" / "T-Shirt" / "Tshirt", and the possessive forms of men/women.
+    .replace(/\bt[\s-]?shirts?\b/g, 'tshirt')
+    .replace(/\bmen'?s\b/g, 'men')
+    .replace(/\bwomen'?s\b/g, 'women')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-    // Use Firecrawl search API to find AJIO deals (bypasses anti-bot)
-    const searchQueries = [
-      'site:ajio.com sale offers discount 2024',
-      'site:ajio.com flash sale deals today',
-      'AJIO current promotions discounts India fashion',
-      'AJIO clearance sale offers clothing',
-    ];
+/** "sneakers" and "sneaker" are the same product; "dress" must not become "dres". */
+function singular(token: string): string {
+  return token.length > 4 && token.endsWith('s') && !token.endsWith('ss')
+    ? token.slice(0, -1)
+    : token;
+}
 
-    const deals: any[] = [];
-    const products: any[] = [];
-    let successfulSearches = 0;
+function buildMatchKey(brand: string | null, title: string): string | null {
+  if (!brand) return null;
 
-    // Search for deals using Firecrawl search API
-    for (const query of searchQueries) {
-      try {
-        console.log(`Searching: ${query}`);
-        const response = await fetch('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: query,
-            limit: 10,
-            country: 'in',
-            scrapeOptions: {
-              formats: ['markdown'],
-            },
-          }),
-        });
+  const tokens = normalizeTitle(title)
+    .split(/\s+/)
+    .filter((t) => t.length > 2 && !STOPWORDS.has(t) && !/^\d+$/.test(t))
+    .map(singular);
 
-        if (response.ok) {
-          const searchResult = await response.json();
-          const results = searchResult.data || searchResult || [];
-          
-          if (Array.isArray(results) && results.length > 0) {
-            successfulSearches++;
-            console.log(`✓ Found ${results.length} results for: ${query}`);
-            
-            for (const result of results) {
-              const parsedDeals = parseDealsFromSearchResult(result);
-              deals.push(...parsedDeals);
-              
-              if (result.markdown) {
-                const parsedProducts = parseProductsFromContent(result.markdown, result.url || '');
-                products.push(...parsedProducts);
-              }
-            }
-          } else {
-            console.log(`✗ No results array for: ${query}`);
-          }
-        } else {
-          const errorText = await response.text();
-          console.error(`✗ Search failed for "${query}": ${response.status} - ${errorText}`);
-        }
-      } catch (err) {
-        console.error(`✗ Search error for "${query}":`, err);
-      }
-    }
+  const brandTokens = new Set(normalizeTitle(brand).split(/\s+/).map(singular));
+  const distinctive = [...new Set(tokens)]
+    .filter((t) => !brandTokens.has(t))
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 3)
+    .sort();
 
-    // Search for specific product categories
-    const categorySearches = [
-      { query: 'AJIO women tops price discount sale', category: 'Women Tops' },
-      { query: 'AJIO men shirts price discount offer', category: 'Men Shirts' },
-      { query: 'AJIO women dresses price discount', category: 'Women Dresses' },
-      { query: 'AJIO sneakers shoes price discount', category: 'Sneakers' },
-      { query: 'AJIO ethnic wear kurta price discount', category: 'Ethnic Wear' },
-    ];
+  if (distinctive.length < 2) return null;
+  return `${brand.toLowerCase()}|${distinctive.join('-')}`;
+}
 
-    for (const { query, category } of categorySearches) {
-      try {
-        console.log(`Searching category: ${category}`);
-        const response = await fetch('https://api.firecrawl.dev/v1/search', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: query,
-            limit: 5,
-            country: 'in',
-            tbs: 'qdr:w',
-            scrapeOptions: {
-              formats: ['markdown'],
-            },
-          }),
-        });
-
-        if (response.ok) {
-          const searchResult = await response.json();
-          const results = searchResult.data || searchResult || [];
-          
-          if (Array.isArray(results)) {
-            for (const result of results) {
-              if (result.markdown) {
-                const categoryProducts = parseProductsFromContent(result.markdown, result.url || '', category);
-                products.push(...categoryProducts);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error(`✗ Category search error for "${category}":`, err);
-      }
-    }
-
-    // Deduplicate deals and products
-    const uniqueDeals = deduplicateByKey(deals, 'name');
-    const uniqueProducts = deduplicateByKey(products, 'name');
-
-    console.log(`Total unique deals: ${uniqueDeals.length}`);
-    console.log(`Total unique products: ${uniqueProducts.length}`);
-
-    // Store deals in database
-    let dealsStored = 0;
-    for (const deal of uniqueDeals.slice(0, 30)) {
-      const { error: dealError } = await supabase
-        .from('competitor_deals')
-        .upsert({
-          competitor: 'AJIO',
-          deal_name: deal.name.substring(0, 255),
-          discount_value: deal.discount,
-          category: deal.category,
-          deal_type: deal.type,
-          impact_level: deal.impact,
-          is_flash_sale: deal.isFlashSale,
-          start_date: new Date().toISOString().split('T')[0],
-          end_date: deal.endDate,
-          estimated_conversion_impact: deal.conversionImpact,
-        }, { 
-          onConflict: 'competitor,deal_name,category',
-          ignoreDuplicates: false 
-        });
-
-      if (!dealError) {
-        dealsStored++;
-      } else {
-        console.error('Error storing deal:', dealError.message);
-      }
-    }
-
-    // Store products in database
-    let productsStored = 0;
-    for (const product of uniqueProducts.slice(0, 50)) {
-      const { error: productError } = await supabase
-        .from('competitor_products')
-        .upsert({
-          competitor: 'AJIO',
-          product_name: product.name.substring(0, 255),
-          category: product.category,
-          current_price: product.price,
-          original_price: product.originalPrice,
-          discount_percentage: product.discount,
-          brand: product.brand,
-          in_stock: true,
-          // Myntra is never scraped, so there is nothing to compare against. This
-          // used to hold AJIO's price multiplied by a per-category constant and a
-          // random factor, which made Myntra look dearer by construction and drove
-          // a "price competitiveness" figure that measured nothing.
-          myntra_equivalent_price: null,
-          price_difference: null,
-          product_url: product.url,
-        }, { 
-          onConflict: 'competitor,product_name,category',
-          ignoreDuplicates: false 
-        });
-
-      if (!productError) {
-        productsStored++;
-      } else {
-        console.error('Error storing product:', productError.message);
-      }
-    }
-
-    // Create alerts for high-impact deals
-    const highImpactDeals = uniqueDeals.filter(d => d.impact === 'high' || d.impact === 'critical');
-    if (highImpactDeals.length > 0) {
-      await supabase.from('alerts').insert({
-        title: `⚠️ AJIO High-Impact Deals Detected`,
-        message: `${highImpactDeals.length} high-impact deals found on AJIO. Categories: ${[...new Set(highImpactDeals.map(d => d.category))].join(', ')}. Review competitive pricing strategy immediately.`,
-        type: 'competitor_alert',
-        severity: highImpactDeals.some(d => d.impact === 'critical') ? 'critical' : 'high',
-        source: 'scrape-competitor-data',
-        metadata: { 
-          deals: highImpactDeals.slice(0, 10).map(d => ({ name: d.name, discount: d.discount, category: d.category })),
-          total_deals: uniqueDeals.length,
-          scrape_method: 'search_api'
-        },
-      });
-    }
-
-    // No price-gap insight is generated any more. It compared AJIO's price against
-    // estimateMyntraPrice(), whose category multipliers were all above 1.0, so the
-    // gap was positive by arithmetic and the insight always fired with a hardcoded
-    // 0.82 confidence. Restoring it requires actually scraping Myntra.
-
-    // Log the run honestly. A run that stored nothing is a failed run, not a
-    // completed one; marking it completed is what let the dashboard report fresh
-    // data after every source had been blocked.
-    const storedAnything = dealsStored + productsStored > 0;
-    await supabase.from('scrape_logs').insert({
-      source: 'AJIO Competitor (Search API)',
-      scrape_type: 'competitor_data',
-      status: storedAnything ? 'completed' : 'failed',
-      started_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-      records_processed: dealsStored + productsStored,
-      errors: storedAnything && successfulSearches === searchQueries.length ? null : {
-        failed_searches: searchQueries.length - successfulSearches,
-        products_extracted: uniqueProducts.length,
-        products_stored: productsStored,
-        deals_stored: dealsStored,
-        note: storedAnything
-          ? 'Some searches failed.'
-          : 'No product or deal survived validation. AJIO most likely served an anti-bot page.',
-      },
-    });
-
-    return new Response(JSON.stringify({
-      success: true,
-      method: 'firecrawl_search_api',
-      successful_searches: successfulSearches,
-      deals_extracted: uniqueDeals.length,
-      deals_stored: dealsStored,
-      products_extracted: uniqueProducts.length,
-      products_stored: productsStored,
-      high_impact_deals: highImpactDeals.length,
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
-  } catch (error) {
-    console.error('Error in scrape-competitor-data:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-});
-
-function parseDealsFromSearchResult(result: any): any[] {
-  const deals: any[] = [];
-  
-  const title = result.title || '';
-  const description = result.description || '';
-  const url = result.url || '';
-  const content = result.markdown || '';
-  
-  const fullText = `${title} ${description} ${content}`;
-  
-  // Extract discount percentages
-  const discountPatterns = [
-    /(\d+)%\s*(?:off|discount|sale)/gi,
-    /(?:up\s*to|upto|flat)\s*(\d+)%/gi,
-    /(?:min|minimum)\s*(\d+)%/gi,
-  ];
-  
-  const foundDiscounts: number[] = [];
-  for (const pattern of discountPatterns) {
-    let match;
-    while ((match = pattern.exec(fullText)) !== null) {
-      const discount = parseInt(match[1] || match[2]);
-      if (discount >= 10 && discount <= 90) {
-        foundDiscounts.push(discount);
-      }
-    }
-  }
-  
-  // An anti-bot or error page is not a deal. AJIO serves Akamai error pages to
-  // scrapers, and their titles ("Reference #18.8df6d517...") were being stored as
-  // deal names with the leading 18 read as an 18% discount. Those rows then fed
-  // the "high-impact deals detected" alert.
-  const looksLikeErrorPage = /reference\s*#|errors\.edgesuite|access denied|forbidden|not found|captcha|are you a robot/i
-    .test(`${title} ${url} ${description}`);
-  if (looksLikeErrorPage) {
-    return deals;
-  }
-
-  // A deal needs an actual discount figure. The word "sale" alone used to be
-  // enough, and the discount was then invented as a flat 30%.
-  if (foundDiscounts.length === 0) {
-    return deals;
-  }
-
-  const category = detectCategory(url, fullText);
-  const maxDiscount = Math.max(...foundDiscounts);
-  const isFlashSale = /flash|limited|hour|today|ending|hurry/i.test(fullText);
-  const dealType = maxDiscount >= 60 ? 'mega_sale' : maxDiscount >= 40 ? 'seasonal_sale' : 'regular_discount';
-  const impact = maxDiscount >= 60 ? 'critical' : maxDiscount >= 40 ? 'high' : 'medium';
-
-  const dealName = title.length > 10 ? title.substring(0, 150) : `AJIO ${maxDiscount}% ${category} Sale`;
-
-  deals.push({
-    name: dealName,
-    discount: foundDiscounts.length > 1 ? `${Math.min(...foundDiscounts)}-${maxDiscount}% Off` : `${maxDiscount}% Off`,
-    category: category,
-    type: dealType,
-    impact: impact,
-    isFlashSale: isFlashSale,
-    endDate: null,
-    // Was maxDiscount * 0.3 or * 0.2 — a conversion lift nobody measured, stored
-    // as though it had been.
-    conversionImpact: null,
-    sourceUrl: url,
-  });
-
-  return deals;
+function titleFromSlug(slug: string): string {
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 /** Page furniture that appears in search-result markdown but is never a product. */
@@ -345,147 +139,344 @@ const MARKUP_LINE = /^(!\[|\||•|[-*#>]\s|\(|https?:|Reference\s*#)/i;
 const PROMO_COPY = /(coupon|cart value|t&c|terms and conditions|offer icon|reward|voucher|minimum|additional\s|extra\s|use\s+code|apply\s+code|net order value|edgesuite|access denied|reference\s*#|participating in|capped at|purchase over|flat\s+\d*%)/i;
 
 /**
- * Pull products out of scraped page markdown.
+ * Pull products out of one retailer's scraped page markdown.
  *
- * This used to treat any line containing a rupee figure between 200 and 30000
- * as a product, which is how banner captions, coupon terms and two Akamai error
- * pages ended up in competitor_products with prices attached. It also built the
- * name with `line.replace(/[₹Rs.\d,\s]+/g, ' ')` — a character class, so it
- * deleted every R, s and digit anywhere in the text and stored "Customer" as
- * "Cu tomer".
- *
- * A line now has to name a brand we recognise before it counts. That is the only
- * reliable product signal in search-result markdown, and requiring it means we
- * return nothing rather than guessing.
+ * A line counts only when it carries a rupee price AND either links to a product
+ * on that retailer's own domain or names a brand we recognise. The earlier
+ * version accepted any line with a rupee figure, which is how banner captions,
+ * coupon terms and two Akamai error pages became priced "products".
  */
-function parseProductsFromContent(content: string, url: string, defaultCategory?: string): any[] {
+function parseProducts(
+  content: string,
+  retailer: typeof RETAILERS[number],
+  sourceUrl: string,
+  category: string,
+): any[] {
   const products: any[] = [];
-  const lines = content.split('\n');
-
   const pricePattern = /(?:₹|Rs\.?|INR)\s*([\d,]+)/gi;
 
-  const knownBrands = [
-    'Puma', 'Nike', 'Adidas', 'Levis', 'Wrangler', 'Allen Solly', 'Van Heusen',
-    'Peter England', 'Louis Philippe', 'Jack & Jones', 'Vero Moda',
-    'BIBA', 'Aurelia', 'Global Desi', 'Reebok', 'Asics', 'Skechers'
-  ];
-
-  const category = defaultCategory || detectCategory(url, content);
-  const sourceUrl = /^https?:\/\//i.test(url) ? url : null;
-
-  for (const raw of lines) {
+  for (const raw of content.split('\n')) {
     const line = raw.trim();
-    if (line.length < 8 || line.length > 300) continue;
-    if (MARKUP_LINE.test(line) || PROMO_COPY.test(line)) continue;
+    if (line.length < 8 || line.length > 400) continue;
+    if (PROMO_COPY.test(line)) continue;
 
     const priceMatches = [...line.matchAll(pricePattern)];
     if (priceMatches.length === 0) continue;
 
     const prices = priceMatches
       .map((m) => parseInt(m[1].replace(/,/g, ''), 10))
-      .filter((p) => p > 200 && p < 30000);
+      .filter((p) => p > 99 && p < 60000);
     if (prices.length === 0) continue;
 
-    const brand = knownBrands.find((b) =>
+    const link = line.match(retailer.productUrl);
+    const brand = KNOWN_BRANDS.find((b) =>
       new RegExp(`\\b${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(line)
-    );
-    if (!brand) continue;
+    ) ?? null;
 
-    // AJIO product links carry the product name in the slug and the id after /p/.
-    // Prefer them: the surrounding markdown is link syntax and promo wording, so
-    // building the name from the line text gave rows like
-    // "40% off https://www.ajio.com/nike-men-court-vision-low.../p/469811286 grey?".
-    const productLink = line.match(/https?:\/\/(?:www\.)?ajio\.com\/([a-z0-9-]+)\/p\/(\d+)/i);
+    // Without a product link we fall back to brand detection, and then the line
+    // still has to look like prose rather than markup.
+    if (!link && (!brand || MARKUP_LINE.test(line))) continue;
 
-    let name: string;
-    let productUrl = sourceUrl;
+    let title: string;
+    let productUrl: string | null;
 
-    if (productLink) {
-      name = productLink[1]
-        .split('-')
-        .filter(Boolean)
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
-      productUrl = `https://www.ajio.com/${productLink[1]}/p/${productLink[2]}`;
+    if (link) {
+      title = titleFromSlug(link[1]);
+      productUrl = retailer.buildUrl(link[1], link[2]);
     } else {
-      // Remove only the matched price substrings, leaving the rest of the words intact.
-      name = line;
-      for (const m of priceMatches) name = name.replace(m[0], ' ');
-      name = name
+      title = line;
+      for (const m of priceMatches) title = title.replace(m[0], ' ');
+      title = title
         .replace(/https?:\/\/\S+/g, ' ')
         .replace(/[*_`[\]()]/g, ' ')
         .replace(/\s{2,}/g, ' ')
         .trim();
+      productUrl = /^https?:\/\//i.test(sourceUrl) ? sourceUrl : null;
     }
 
-    const words = name.split(/\s+/).filter((w) => /[a-z]{2,}/i.test(w));
-    if (words.length < 2 || name.length < 8) continue;
+    const words = title.split(/\s+/).filter((w) => /[a-z]{2,}/i.test(w));
+    if (words.length < 2 || title.length < 8) continue;
+
+    // A brand inside the slug counts too, so linked products are not discarded
+    // just because the brand name sat outside the visible line text.
+    const resolvedBrand = brand ?? KNOWN_BRANDS.find((b) =>
+      new RegExp(`\\b${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title)
+    ) ?? null;
 
     const sorted = [...prices].sort((a, b) => a - b);
     const currentPrice = sorted[0];
-    // Only a genuine second price on the line is an original price. The old code
-    // invented one as currentPrice * 1.35, manufacturing a discount nobody observed.
+    // Only a genuine second price is an original price; inventing one would
+    // manufacture a discount nobody observed.
     const originalPrice = sorted.length > 1 ? sorted[sorted.length - 1] : null;
-    const discount = originalPrice
-      ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
-      : null;
 
     products.push({
-      name: name.slice(0, 120),
+      name: title.slice(0, 160),
       category,
       price: currentPrice,
       originalPrice,
-      discount,
-      brand,
+      discount: originalPrice
+        ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+        : null,
+      brand: resolvedBrand,
       url: productUrl,
+      matchKey: buildMatchKey(resolvedBrand, title),
+      normalizedTitle: normalizeTitle(title),
     });
   }
 
-  return products.slice(0, 10);
+  return products;
+}
+
+function parseDeals(result: any, retailerName: string): any[] {
+  const title = result.title || '';
+  const description = result.description || '';
+  const url = result.url || '';
+  const fullText = `${title} ${description} ${result.markdown || ''}`;
+
+  // Anti-bot and error pages are not deals. AJIO serves Akamai error pages to
+  // scrapers whose titles ("Reference #18.8df6d517...") were being stored as
+  // deal names, with the leading 18 read as an 18% discount.
+  if (/reference\s*#|errors\.edgesuite|access denied|forbidden|not found|captcha/i.test(`${title} ${url} ${description}`)) {
+    return [];
+  }
+
+  const discounts: number[] = [];
+  for (const pattern of [/(\d+)%\s*(?:off|discount|sale)/gi, /(?:up\s*to|upto|flat)\s*(\d+)%/gi]) {
+    let m;
+    while ((m = pattern.exec(fullText)) !== null) {
+      const d = parseInt(m[1], 10);
+      if (d >= 10 && d <= 90) discounts.push(d);
+    }
+  }
+  // A deal needs a real discount figure. "sale" alone used to be enough, and the
+  // number was then invented as a flat 30%.
+  if (discounts.length === 0 || title.length <= 10) return [];
+
+  const maxDiscount = Math.max(...discounts);
+  return [{
+    name: title.substring(0, 150),
+    discount: discounts.length > 1 ? `${Math.min(...discounts)}-${maxDiscount}% Off` : `${maxDiscount}% Off`,
+    category: detectCategory(url, fullText),
+    type: maxDiscount >= 60 ? 'mega_sale' : maxDiscount >= 40 ? 'seasonal_sale' : 'regular_discount',
+    impact: maxDiscount >= 60 ? 'critical' : maxDiscount >= 40 ? 'high' : 'medium',
+    isFlashSale: /flash|limited|hour|today|ending|hurry/i.test(fullText),
+    retailer: retailerName,
+  }];
 }
 
 function detectCategory(url: string, text: string): string {
   const categoryMap: Record<string, string> = {
-    'women': 'Women',
-    'men': 'Men',
-    'kid': 'Kids',
-    'shoe': 'Footwear',
-    'sneaker': 'Sneakers',
-    'dress': 'Dresses',
-    'top': 'Tops',
-    'shirt': 'Shirts',
-    'jean': 'Jeans',
-    'kurta': 'Ethnic Wear',
-    'ethnic': 'Ethnic Wear',
-    'saree': 'Ethnic Wear',
-    'sport': 'Sportswear',
-    'winter': 'Winterwear',
-    'jacket': 'Winterwear',
-    'bag': 'Accessories',
-    'watch': 'Accessories',
+    'sneaker': 'Sneakers', 'shoe': 'Footwear', 'dress': 'Dresses', 'top': 'Tops',
+    'shirt': 'Shirts', 'jean': 'Jeans', 'kurta': 'Ethnic Wear', 'ethnic': 'Ethnic Wear',
+    'saree': 'Ethnic Wear', 'sport': 'Sportswear', 'winter': 'Winterwear',
+    'bag': 'Accessories', 'watch': 'Accessories', 'women': 'Women', 'men': 'Men',
   };
-  
   const combined = `${url} ${text}`.toLowerCase();
-  
   for (const [keyword, category] of Object.entries(categoryMap)) {
-    if (combined.includes(keyword)) {
-      return category;
-    }
+    if (combined.includes(keyword)) return category;
   }
-  
   return 'Fashion';
 }
 
-function deduplicateByKey(items: any[], key: string): any[] {
-  const seen = new Set<string>();
-  return items.filter(item => {
-    const value = String(item[key] || '').toLowerCase().substring(0, 50);
-    if (seen.has(value)) return false;
-    seen.add(value);
-    return true;
-  });
+async function firecrawlSearch(apiKey: string, query: string): Promise<any[]> {
+  try {
+    const response = await fetch('https://api.firecrawl.dev/v1/search', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, limit: 6, country: 'in', scrapeOptions: { formats: ['markdown'] } }),
+    });
+    if (!response.ok) {
+      console.error(`search failed (${response.status}): ${query}`);
+      return [];
+    }
+    const json = await response.json();
+    const results = json.data ?? json ?? [];
+    return Array.isArray(results) ? results : [];
+  } catch (err) {
+    console.error(`search error: ${query}`, err);
+    return [];
+  }
 }
 
-// estimateMyntraPrice() deleted. It returned ajioPrice * categoryMultiplier *
-// (0.96 + Math.random() * 0.08) and was presented as Myntra's real price.
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
+  try {
+    const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!FIRECRAWL_API_KEY) throw new Error('FIRECRAWL_API_KEY is not configured');
+
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // Every retailer is asked the same questions. Searches run concurrently
+    // because sequentially this exceeded the platform's 150s response limit.
+    const productTasks = RETAILERS.flatMap((retailer) =>
+      CATEGORIES.map((cat) => ({ retailer, cat }))
+    );
+
+    const productResults = await Promise.all(
+      productTasks.map(async ({ retailer, cat }) => {
+        const results = await firecrawlSearch(
+          FIRECRAWL_API_KEY,
+          `site:${retailer.site} ${cat.query}`,
+        );
+        const found = results.flatMap((r: any) =>
+          r.markdown ? parseProducts(r.markdown, retailer, r.url || '', cat.category) : []
+        );
+        return { retailer, category: cat.category, found, searched: results.length > 0 };
+      })
+    );
+
+    const dealResults = await Promise.all(
+      RETAILERS.filter((r) => !r.isOwnBrand).map(async (retailer) => {
+        const results = await firecrawlSearch(
+          FIRECRAWL_API_KEY,
+          `site:${retailer.site} sale offers discount`,
+        );
+        return results.flatMap((r: any) => parseDeals(r, retailer.name));
+      })
+    );
+
+    // Deduplicate per retailer, keeping the cheapest sighting of each product.
+    const byRetailer = new Map<string, Map<string, any>>();
+    const coverage: Record<string, Record<string, number>> = {};
+
+    for (const { retailer, category, found } of productResults) {
+      coverage[retailer.name] ??= {};
+      coverage[retailer.name][category] = (coverage[retailer.name][category] ?? 0) + found.length;
+
+      const bucket = byRetailer.get(retailer.name) ?? new Map();
+      for (const p of found) {
+        const key = (p.url ?? p.name).toLowerCase();
+        const existing = bucket.get(key);
+        if (!existing || p.price < existing.price) bucket.set(key, { ...p, retailer });
+      }
+      byRetailer.set(retailer.name, bucket);
+    }
+
+    let productsStored = 0;
+    let historyRows = 0;
+    const storedByRetailer: Record<string, number> = {};
+
+    for (const [retailerName, bucket] of byRetailer) {
+      for (const product of [...bucket.values()].slice(0, 40)) {
+        const { data: saved, error } = await supabase
+          .from('competitor_products')
+          .upsert({
+            competitor: retailerName,
+            is_own_brand: product.retailer.isOwnBrand,
+            product_name: product.name.substring(0, 255),
+            category: product.category,
+            current_price: product.price,
+            original_price: product.originalPrice,
+            discount_percentage: product.discount,
+            brand: product.brand,
+            in_stock: true,
+            // Comparison is done by joining on match_key in the
+            // product_price_comparison view, not by writing a guessed price here.
+            myntra_equivalent_price: null,
+            price_difference: null,
+            product_url: product.url,
+            match_key: product.matchKey,
+            normalized_title: product.normalizedTitle,
+            scraped_at: new Date().toISOString(),
+          }, { onConflict: 'competitor,product_name,category' })
+          .select('id')
+          .maybeSingle();
+
+        if (error) {
+          console.error(`store failed (${retailerName}): ${error.message}`);
+          continue;
+        }
+
+        productsStored++;
+        storedByRetailer[retailerName] = (storedByRetailer[retailerName] ?? 0) + 1;
+
+        // One row per sighting. price_history existed from the start and was
+        // never written to, which is why every price was a snapshot with no
+        // before and the price timeline had nothing to draw.
+        if (saved?.id) {
+          const { error: histError } = await supabase.from('price_history').insert({
+            product_id: saved.id,
+            price: product.price,
+            discount_percentage: product.discount,
+          });
+          if (!histError) historyRows++;
+        }
+      }
+    }
+
+    let dealsStored = 0;
+    for (const deal of dealResults.flat().slice(0, 40)) {
+      const { error } = await supabase
+        .from('competitor_deals')
+        .upsert({
+          competitor: deal.retailer,
+          deal_name: deal.name.substring(0, 255),
+          discount_value: deal.discount,
+          category: deal.category,
+          deal_type: deal.type,
+          impact_level: deal.impact,
+          is_flash_sale: deal.isFlashSale,
+          start_date: new Date().toISOString().split('T')[0],
+          end_date: null,
+          estimated_conversion_impact: null,
+        }, { onConflict: 'competitor,deal_name,category' });
+      if (!error) dealsStored++;
+    }
+
+    // How many products now have a counterpart on another retailer.
+    const { count: matchedPairs } = await supabase
+      .from('product_price_comparison')
+      .select('*', { count: 'exact', head: true });
+
+    const storedAnything = productsStored + dealsStored > 0;
+    const retailersWithData = Object.keys(storedByRetailer);
+
+    await supabase.from('scrape_logs').insert({
+      source: `Retail prices (${retailersWithData.join(', ') || 'none'})`,
+      scrape_type: 'competitor_data',
+      status: storedAnything ? 'completed' : 'failed',
+      started_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+      records_processed: productsStored + dealsStored,
+      errors: storedAnything && retailersWithData.length === RETAILERS.length ? null : {
+        retailers_attempted: RETAILERS.map((r) => r.name),
+        retailers_with_data: retailersWithData,
+        coverage,
+        note: storedAnything
+          ? 'Some retailers returned nothing; they most likely served an anti-bot page.'
+          : 'No product or deal survived validation across any retailer.',
+      },
+    });
+
+    if (!storedAnything) {
+      await supabase.from('alerts').insert({
+        title: 'Price collection returned nothing',
+        message: `No retailer returned a usable product. Attempted: ${RETAILERS.map((r) => r.name).join(', ')}.`,
+        type: 'competitor_alert',
+        severity: 'high',
+        source: 'scrape-competitor-data',
+      });
+    }
+
+    return new Response(JSON.stringify({
+      success: storedAnything,
+      retailers: RETAILERS.map((r) => r.name),
+      products_stored: productsStored,
+      stored_by_retailer: storedByRetailer,
+      price_history_rows: historyRows,
+      deals_stored: dealsStored,
+      matched_pairs: matchedPairs ?? 0,
+      coverage,
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+  } catch (error) {
+    console.error('Error in scrape-competitor-data:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+});
