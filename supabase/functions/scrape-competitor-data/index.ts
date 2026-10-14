@@ -137,8 +137,15 @@ function singular(token: string): string {
 function buildMatchKey(brand: string | null, title: string): string | null {
   if (!brand) return null;
 
-  const tokens = normalizeTitle(title)
-    .split(/\s+/)
+  const all = normalizeTitle(title).split(/\s+/);
+
+  // Model numbers distinguish products and must not be dropped. The first live
+  // run paired "Nike Men Revolution 6 Running Shoes" with "Nike Men Revolution 8
+  // Running Shoes" — different shoes — because digits were filtered out and the
+  // remaining words were identical.
+  const numbers = [...new Set(all.filter((t) => /^\d{1,4}$/.test(t)))].sort();
+
+  const tokens = all
     .filter((t) => t.length > 2 && !STOPWORDS.has(t) && !/^\d+$/.test(t))
     .map(singular);
 
@@ -150,7 +157,9 @@ function buildMatchKey(brand: string | null, title: string): string | null {
     .sort();
 
   if (distinctive.length < 2) return null;
-  return `${brand.toLowerCase()}|${distinctive.join('-')}`;
+
+  const suffix = numbers.length ? `#${numbers.join('.')}` : '';
+  return `${brand.toLowerCase()}|${distinctive.join('-')}${suffix}`;
 }
 
 function titleFromSlug(slug: string): string {
