@@ -30,7 +30,10 @@ export function EnhancedCompetitorSection() {
 
   // Calculate SKU matching stats
   const totalProducts = displayProducts.length;
-  const matchedSKUs = displayProducts.filter((p: any) => p.myntra_equivalent_price !== null && p.myntra_equivalent_price !== undefined).length;
+  // Matching is done by match_key in the product_price_comparison view, not by
+  // a price written onto the row, so count rows that carry a key. Counting
+  // myntra_equivalent_price reported 0% matched for every product.
+  const matchedSKUs = displayProducts.filter((p: any) => p.match_key).length;
   const matchRate = totalProducts > 0 ? Math.round((matchedSKUs / totalProducts) * 100) : 0;
 
   // Category-wise aggregation with product counts
@@ -85,7 +88,7 @@ export function EnhancedCompetitorSection() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold">Competitive Intelligence</h2>
-          <p className="text-muted-foreground">Real-time AJIO pricing and promotion tracking</p>
+          <p className="text-muted-foreground">Like-for-like pricing across Myntra, AJIO, Nykaa Fashion and Tata CLiQ</p>
         </div>
         
         {/* SKU Match Summary */}
@@ -99,7 +102,7 @@ export function EnhancedCompetitorSection() {
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Total products being tracked across both platforms</p>
+                <p>Total products tracked across all four retailers</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -111,11 +114,11 @@ export function EnhancedCompetitorSection() {
               <TooltipTrigger asChild>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-teal" />
-                  <span className="text-sm font-medium">{matchRate}% matched</span>
+                  <span className="text-sm font-medium">{matchRate}% matchable</span>
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>{matchedSKUs} of {totalProducts} products have verified Myntra equivalents</p>
+                <p>{matchedSKUs} of {totalProducts} products carry a key that can pair with another retailer</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
