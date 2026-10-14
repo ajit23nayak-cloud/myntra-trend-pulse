@@ -48,27 +48,24 @@ const RETAILERS = [
 ];
 
 /**
- * A fixed grid of categories, read for every retailer.
+ * Brands every one of these retailers carries, and the sampling frame.
  *
- * Coverage used to be whatever a handful of ad-hoc searches happened to return,
- * which made the sample indefensible: you could not say what the 30 rows were a
- * sample *of*. Every retailer is now asked the same four questions, so counts
- * are comparable across retailers and the gaps are visible.
+ * Coverage was category-led first ("women tops", "men shirts"). That returned
+ * real products but no comparable ones, because Myntra's own search surfaces its
+ * private labels — Moda Rapido, Baesd, Ed A Mamma are Myntra-owned and are not
+ * sold on AJIO at all, so they can never pair up.
+ *
+ * Tracking third-party brands that all four retailers stock is what makes a
+ * like-for-like comparison possible, and it is a sampling frame you can state
+ * plainly: these brands, these retailers, refreshed twice a day.
  */
-const CATEGORIES = [
-  { query: 'women tops price', category: 'Women Tops' },
-  { query: 'men shirts price', category: 'Men Shirts' },
-  { query: 'sneakers shoes price', category: 'Sneakers' },
-  { query: 'kurta ethnic wear price', category: 'Ethnic Wear' },
+const TRACKED_BRANDS = [
+  { query: 'Nike shoes price', category: 'Footwear' },
+  { query: 'Puma shoes price', category: 'Footwear' },
+  { query: 'Adidas shoes price', category: 'Footwear' },
+  { query: 'Levis jeans price', category: 'Jeans' },
+  { query: 'Jack Jones shirt price', category: 'Men Shirts' },
 ];
-
-/**
- * How many of our products to look up on other retailers per run.
- *
- * Each one is a Firecrawl search, so this is the main cost lever: pass 1 is four
- * searches, pass 2 is this many.
- */
-const LOOKUP_LIMIT = 12;
 
 /**
  * Words that cannot be part of a brand name, used to find where the brand ends.
@@ -100,10 +97,6 @@ function extractBrand(title: string): string | null {
   return brand.length ? brand.join(' ') : null;
 }
 
-/** Which retailer a result URL belongs to, or null if it is none of ours. */
-function retailerForUrl(url: string) {
-  return RETAILERS.find((r) => url.includes(r.site)) ?? null;
-}
 
 /** Words too common to identify a product. */
 const STOPWORDS = new Set(['the', 'and', 'for', 'with', 'from', 'your', 'our']);
@@ -343,14 +336,22 @@ serve(async (req) => {
     const own = RETAILERS.find((r) => r.isOwnBrand)!;
     const rivals = RETAILERS.filter((r) => !r.isOwnBrand);
 
-    // Pass 1: our own catalogue, across a fixed category grid.
-    const ownResults = await Promise.all(
-      CATEGORIES.map(async (cat) => {
-        const results = await firecrawlSearch(FIRECRAWL_API_KEY, `site:${own.site} ${cat.query}`);
-        return results.flatMap((r: any) =>
-          r.markdown ? parseProducts(r.markdown, own, r.url || '', cat.category) : []
-        );
-      })
+    // Every retailer is asked for the same brands, so both sides of a
+    // comparison are drawn from the same frame. Searches run concurrently:
+    // sequentially this grid exceeds the platform's 150s response limit.
+    const gridResults = await Promise.all(
+      RETAILERS.flatMap((retailer) =>
+        TRACKED_BRANDS.map(async (brand) => {
+          const results = await firecrawlSearch(
+            FIRECRAWL_API_KEY,
+            `site:${retailer.site} ${brand.query}`,
+          );
+          const found = results.flatMap((r: any) =>
+            r.markdown ? parseProducts(r.markdown, retailer, r.url || '', brand.category) : []
+          );
+          return { retailer, category: brand.category, found };
+        })
+      )
     );
 
     const byRetailer = new Map<string, Map<string, any>>();
@@ -366,48 +367,8 @@ serve(async (req) => {
       byRetailer.set(retailer.name, bucket);
     };
 
-    const ownProducts: any[] = [];
-    for (const found of ownResults) {
-      for (const p of found) {
-        addProduct(own, p.category, p);
-        if (p.matchKey) ownProducts.push(p);
-      }
-    }
-
-    /**
-     * Pass 2: go looking for *our* products on the other retailers.
-     *
-     * Searching each site separately — the obvious approach, and the first one
-     * tried — returns whatever that site's SEO surfaces, which is a different
-     * set of products on every site. It produced 132 rows across four retailers
-     * and exactly zero matched pairs, because Myntra returned "Baesd Girls
-     * Floral Top" while AJIO returned "Maheshvi Women Ribbed Top".
-     *
-     * So each query is one of our product names with no site filter, and
-     * whichever retailer the result URL belongs to is the retailer it counts
-     * for. That is how a price comparison actually has to work: pick the
-     * product first, then find it elsewhere.
-     */
-    const lookups = ownProducts.slice(0, LOOKUP_LIMIT);
-    const rivalResults = await Promise.all(
-      lookups.map(async (product) => {
-        const results = await firecrawlSearch(
-          FIRECRAWL_API_KEY,
-          `"${product.name}" price buy online`,
-        );
-        return results.flatMap((r: any) => {
-          const retailer = retailerForUrl(r.url || '');
-          if (!retailer || retailer.isOwnBrand || !r.markdown) return [];
-          // Carry the retailer with each product; the URL is the only thing that
-          // says which site a result came from.
-          return parseProducts(r.markdown, retailer, r.url || '', product.category)
-            .map((p: any) => ({ product: p, retailer }));
-        });
-      })
-    );
-
-    for (const found of rivalResults) {
-      for (const { product, retailer } of found) addProduct(retailer, product.category, product);
+    for (const { retailer, category, found } of gridResults) {
+      for (const p of found) addProduct(retailer, category, p);
     }
 
     // Deals, one search per competitor.
