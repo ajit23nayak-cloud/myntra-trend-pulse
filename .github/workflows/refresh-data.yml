@@ -1,0 +1,66 @@
+name: Refresh dashboard data
+
+# Keeps the dashboard current. Without a schedule the tables went five weeks
+# stale and the Overview header turned amber to say so, which is the first thing
+# a visitor sees.
+#
+# This lives in GitHub Actions rather than in the database because Lovable Cloud
+# does not provide pg_cron — `cron.job` does not exist there — and its own Jobs
+# panel only displays jobs, it cannot create them.
+#
+# The five edge functions are declared `verify_jwt = false` in
+# supabase/config.toml, so these calls need no key and the workflow needs no
+# secrets. That is also why anyone who finds this repository can trigger a
+# scrape; see the README for why that gap is still open.
+
+on:
+  schedule:
+    # Twice a day, 02:00 and 14:00 UTC. Enough to keep the newest completed run
+    # under the dashboard's 24-hour staleness threshold, while keeping Firecrawl
+    # spend to roughly half what a 6-hourly schedule would cost.
+    - cron: '0 2,14 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect competitor prices, reviews and trends
+        env:
+          BASE: https://ymqvtwjubhbxsmgylabc.lovable.cloud/functions/v1
+        run: |
+          # The competitor scraper runs 9 Firecrawl searches and regularly takes
+          # longer than the platform's 150s response limit. The connection drops
+          # but the function keeps running and still writes its rows, so a
+          # timeout here is expected and must not fail the workflow.
+          call() {
+            echo "--- $1 ---"
+            code=$(curl -sS -o /tmp/out -w '%{http_code}' \
+              -X POST "$BASE/$1" \
+              -H 'Content-Type: application/json' \
+              -d '{}' --max-time 170) || code="timeout"
+            echo "status: $code"
+            head -c 600 /tmp/out || true
+            echo
+          }
+
+          call scrape-competitor-data
+          call scrape-reviews
+          call scrape-trends
+          # Reads what the three above stored, so it goes last.
+          call generate-insights
+
+      - name: Report what was actually written
+        env:
+          BASE: https://ymqvtwjubhbxsmgylabc.lovable.cloud/rest/v1
+          KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          # A run that stored nothing is logged as 'failed' with a reason, so the
+          # last few rows of scrape_logs tell you whether this run did anything.
+          # Falls back silently if the repository variable is not set.
+          if [ -z "$KEY" ]; then
+            echo "SUPABASE_PUBLISHABLE_KEY repository variable not set; skipping summary."
+            exit 0
+          fi
+          curl -sS "$BASE/scrape_logs?select=source,status,records_processed,created_at&order=created_at.desc&limit=4" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" | tr '}' '}\n'

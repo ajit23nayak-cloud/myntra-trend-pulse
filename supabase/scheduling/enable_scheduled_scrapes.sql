@@ -1,8 +1,20 @@
--- Turn on scheduled scraping.
+-- DOES NOT WORK ON LOVABLE CLOUD. Kept for a future move to a Supabase project
+-- that has pg_cron.
+--
+-- Running this against the Lovable Cloud database fails:
+--
+--   ERROR: 42P01: relation "cron.job" does not exist
+--
+-- pg_cron is not installed there and CREATE EXTENSION does not provide it.
+-- Lovable's own Cloud → Jobs panel only lists jobs an app has scheduled; it has
+-- no way to create one.
+--
+-- Scheduling therefore lives in .github/workflows/refresh-data.yml, which calls
+-- the same four endpoints twice a day from GitHub Actions. The functions are
+-- declared verify_jwt = false, so that workflow needs no secrets.
 --
 -- OPTIONAL and deliberately NOT in supabase/migrations/, so it is never applied
--- automatically. Run it by hand in Lovable's Cloud → SQL editor.
--- scheduling/disable_scheduled_scrapes.sql switches it back off.
+-- automatically. scheduling/disable_scheduled_scrapes.sql switches it back off.
 --
 -- Why it matters: without this, data only moves when someone opens the dashboard
 -- and presses Refresh All. Left alone the tables went five weeks stale, and the

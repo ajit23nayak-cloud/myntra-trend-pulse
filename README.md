@@ -46,11 +46,11 @@ Every fetch goes through Firecrawl. Each run writes a row to `scrape_logs`, so y
 
 ### When they run
 
-On demand. Scheduled scraping is off by default, so the scrapers run only when the owner opens the Refresh All panel and asks for it.
+Twice a day, 02:00 and 14:00 UTC, from [`.github/workflows/refresh-data.yml`](.github/workflows/refresh-data.yml). That is enough to keep the newest completed run inside the dashboard's 24-hour staleness threshold at roughly half the Firecrawl spend of a 6-hourly schedule. The workflow can also be run on demand from the Actions tab.
+
+It lives in GitHub Actions rather than in the database because Lovable Cloud has no `pg_cron` — `cron.job` does not exist there — and Lovable's Cloud → Jobs panel only displays jobs, it cannot create them. `supabase/scheduling/` keeps the `pg_cron` version for a future move to a Supabase project that supports it.
 
 The Overview header shows how old the newest completed run is and turns amber past 24 hours, so stale data announces itself rather than passing as current.
-
-To hand the job to a schedule instead, run `supabase/scheduling/enable_scheduled_scrapes.sql` by hand in the Supabase SQL editor. It registers four staggered `pg_cron` jobs — competitor data and reviews every 6 hours, trends every 12, insights after them — and `disable_scheduled_scrapes.sql` removes them again. Neither file lives in `migrations/`, so neither is ever applied automatically.
 
 ```sql
 -- what is scheduled, if anything
